@@ -5,8 +5,8 @@ import { create } from 'zustand';
 export type Tab = 'list' | 'compare' | 'shop' | 'stores';
 
 export type SearchMode =
-  /** Add products to the list. */
-  | { kind: 'add' }
+  /** Add products to the list, optionally starting from a typed word. */
+  | { kind: 'add'; query?: string }
   /** Pick the product a free-text line refers to. */
   | { kind: 'match'; itemId: string; query: string }
   /** Pick a stand-in for a line in a store that lacks the exact product. */
@@ -17,7 +17,8 @@ export type Overlay =
   | { kind: 'paste' }
   | { kind: 'scan' }
   | { kind: 'item'; itemId: string }
-  | { kind: 'stores' };
+  | { kind: 'stores' }
+  | { kind: 'help' };
 
 interface NavState {
   tab: Tab;

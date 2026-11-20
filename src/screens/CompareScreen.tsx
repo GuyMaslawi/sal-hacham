@@ -40,6 +40,8 @@ export function CompareScreen() {
   }
 
   const best = quotes[0];
+  const dearest = quotes[quotes.length - 1];
+  const spread = dearest.estimate - best.estimate;
   const byId = new Map(items.map((i) => [i.id, i]));
   // When the cheapest store lacks items, also point out the cheapest store that has them all.
   const bestComplete = best.missing.length > 0 ? quotes.find((q) => q.missing.length === 0) : undefined;
@@ -48,6 +50,22 @@ export function CompareScreen() {
   return (
     <div className="pb-6">
       {header}
+
+      <p className="-mt-1 px-5 pb-3 text-muted">
+        {pricedCount === 1 ? 'מוצר אחד' : `${pricedCount} מוצרים`} ב-{quotes.length === 1 ? 'סניף אחד' : `${quotes.length} סניפים`}.{' '}
+        {quotes.length > 1 ? (
+          spread >= 0.5 ? (
+            <>
+              ההפרש בין הזול ליקר: <Price value={spread} className="font-bold text-ink" />.{' '}
+            </>
+          ) : (
+            <>המחיר כמעט זהה בכולם. </>
+          )
+        ) : null}
+        <button type="button" className="font-semibold text-ink underline underline-offset-4" onClick={() => open({ kind: 'help' })}>
+          איך זה מחושב?
+        </button>
+      </p>
 
       <ol className="mx-4 space-y-2.5">
         {quotes.map((q, rank) => (
@@ -154,10 +172,14 @@ function StoreCard({
           <span className="block text-lg leading-tight font-bold">{storeTitle(store, index)}</span>
           <span className="mt-0.5 block truncate text-sm text-muted">{storePlace(store)}</span>
         </span>
-        <span className="flex shrink-0 flex-col items-end gap-1">
+        <span className="flex shrink-0 flex-col items-end gap-1.5">
           {/* The comparable number: this store's total plus an allowance for what it lacks. */}
           <PriceTag value={quote.estimate} plain={!isBest} size={isBest ? 'md' : 'sm'} />
           {!isBest && gap >= 0.05 ? <span className="num text-sm font-semibold text-alert">+{formatPrice(gap)}</span> : null}
+          <span className="inline-flex items-center gap-0.5 text-sm font-semibold text-muted">
+            {expanded ? 'סגור' : 'פירוט'}
+            <ChevronDown className={cx('size-4 transition-transform', expanded && 'rotate-180')} />
+          </span>
         </span>
       </button>
 
@@ -179,8 +201,16 @@ function StoreCard({
           </span>
         ) : null}
         <span className={cx(age.stale && 'text-alert')}>{age.text}</span>
-        <ChevronDown className={cx('ms-auto size-5 transition-transform', expanded && 'rotate-180')} />
       </div>
+
+      {isBest && !expanded ? (
+        <div className="px-4 pb-4">
+          <Button variant="tag" className="w-full" onClick={shopHere}>
+            <ShoppingCart className="size-5" />
+            אני קונה כאן
+          </Button>
+        </div>
+      ) : null}
 
       {expanded ? (
         <div className="border-t-[1.5px] border-dashed border-line px-4 pt-1 pb-4">

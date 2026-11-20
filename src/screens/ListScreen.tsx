@@ -1,6 +1,8 @@
-import { ChevronLeft, ClipboardList, ScanBarcode, Search } from 'lucide-react';
+import { ChevronLeft, ClipboardList, ScanBarcode, Search, Share2, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
-import { Button, DealChip, EmptyState, IconButton, Price, PriceTag, QtyBadge, Stepper } from '../components/ui';
+import { InstallHint } from '../components/InstallHint';
+import { Button, DealChip, IconButton, Price, PriceTag, QtyBadge, Stepper } from '../components/ui';
+import { changeQty, clearListWithUndo, shareList } from '../lib/actions';
 import { promoLabel } from '../lib/pricing';
 import { qtyUnit, storeTitle, useComparison, useStoreLookup } from '../lib/view';
 import { stepFor, useApp } from '../state/app';
@@ -15,6 +17,9 @@ interface RowPrices {
   missingIn: number;
   promo: Promo | null;
 }
+
+// Things nearly every household buys: one tap opens the search already filled in.
+const STAPLES = ['חלב', 'לחם', 'ביצים', "קוטג'", 'עגבניות', 'מלפפונים', 'אורז', 'פסטה', 'שמן', 'קפה', 'נייר טואלט', 'חיתולים'];
 
 export function ListScreen() {
   const items = useApp((s) => s.items);
@@ -71,19 +76,7 @@ export function ListScreen() {
       </div>
 
       {items.length === 0 ? (
-        <EmptyState
-          title="הרשימה ריקה"
-          action={
-            <>
-              <Button onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}>הוסף מוצר ראשון</Button>
-              <Button variant="quiet" onClick={() => open({ kind: 'paste' })}>
-                הדבק רשימה מוואטסאפ
-              </Button>
-            </>
-          }
-        >
-          חפש מוצר, סרוק ברקוד או הדבק רשימה שכתבת. נראה לך כמה כל מוצר עולה בכל אחד מהסניפים שבחרת.
-        </EmptyState>
+        <EmptyList />
       ) : (
         <>
           <BestStoreBanner />
@@ -92,12 +85,69 @@ export function ListScreen() {
               <ListRow key={item.id} item={item} prices={prices.get(item.id)} />
             ))}
           </ul>
-          <p className="mt-3 px-6 text-sm text-muted">
-            {items.length === 1 ? 'מוצר אחד ברשימה' : `${items.length} מוצרים ברשימה`}. המחירים לפי הקבצים
-            שהרשתות מפרסמות; המחיר בקופה הוא הקובע.
+
+          <div className="mx-4 mt-2 flex">
+            <Button variant="quiet" className="flex-1 text-[0.95rem]" onClick={() => void shareList()}>
+              <Share2 className="size-[1.1rem]" />
+              שתף רשימה
+            </Button>
+            <Button variant="quiet" className="flex-1 text-[0.95rem]" onClick={clearListWithUndo}>
+              <Trash2 className="size-[1.1rem]" />
+              נקה הכול
+            </Button>
+          </div>
+
+          <p className="mt-1 px-6 text-sm text-muted">
+            המחיר שליד כל מוצר הוא הטווח בין הסניף הזול ליקר שבחרת. המחירים לפי מה שהרשתות פרסמו; בקופה קובע
+            המחיר שם.
           </p>
         </>
       )}
+
+      <InstallHint />
+    </div>
+  );
+}
+
+function EmptyList() {
+  const open = useNav((s) => s.open);
+  return (
+    <div className="px-5 pt-6">
+      <h2 className="font-display text-4xl leading-none font-bold">מתחילים מרשימה</h2>
+      <p className="mt-2 text-muted">
+        הוסף מה שצריך לקנות, ומיד תראה כמה כל מוצר עולה בכל אחד מהסניפים שבחרת.
+      </p>
+
+      <h3 className="mt-6 mb-2 text-sm font-semibold text-muted">התחלה מהירה</h3>
+      <div className="flex flex-wrap gap-2">
+        {STAPLES.map((word) => (
+          <button
+            key={word}
+            type="button"
+            onClick={() => open({ kind: 'search', mode: { kind: 'add', query: word } })}
+            className="min-h-11 rounded-full border-[1.5px] border-line bg-surface px-4 font-medium active:bg-sunken"
+          >
+            {word}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-7 space-y-2">
+        <Button className="w-full" onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}>
+          <Search className="size-5" />
+          חפש מוצר
+        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" className="flex-1" onClick={() => open({ kind: 'paste' })}>
+            <ClipboardList className="size-5" />
+            הדבק רשימה
+          </Button>
+          <Button variant="outline" className="flex-1" onClick={() => open({ kind: 'scan' })}>
+            <ScanBarcode className="size-5" />
+            סרוק ברקוד
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -120,7 +170,7 @@ function BestStoreBanner() {
       className="mx-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-2xl bg-ink p-3 ps-4 text-start text-surface"
     >
       <span className="min-w-0 flex-1">
-        <span className="block text-sm opacity-75">הכי זול ב</span>
+        <span className="block text-sm opacity-75">הסל הכי זול ב</span>
         <span className="block truncate text-lg leading-tight font-bold">{storeTitle(store, index)}</span>
         <span className="mt-0.5 block text-sm opacity-75">
           {best.missing.length > 0 ? (
@@ -129,8 +179,10 @@ function BestStoreBanner() {
             <>
               <Price value={gap} /> פחות מהיקר ביותר
             </>
+          ) : comparison.quotes.length > 1 ? (
+            <>כמעט אותו מחיר בכל הסניפים</>
           ) : (
-            <>כל המוצרים שברשימה</>
+            <>הוסף עוד סניף כדי להשוות</>
           )}
         </span>
       </span>
@@ -141,7 +193,6 @@ function BestStoreBanner() {
 }
 
 function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefined }) {
-  const setQty = useApp((s) => s.setQty);
   const open = useNav((s) => s.open);
   const product = useData((s) => (item.pids[0] ? s.catalog.products.get(item.pids[0]) : undefined));
   const storeCount = useData((s) => s.catalog.storeIds.length);
@@ -195,7 +246,7 @@ function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefin
           value={item.qty}
           step={stepFor(weighted)}
           unit={qtyUnit(weighted)}
-          onChange={(q) => setQty(item.id, q)}
+          onChange={(q) => changeQty(item.id, q)}
         />
       )}
     </li>

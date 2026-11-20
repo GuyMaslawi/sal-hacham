@@ -1,9 +1,10 @@
-import { ArrowRight, Check, Plus, ScanBarcode, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Plus, ScanBarcode, X } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
-import { DealChip, FullScreen, IconButton, Price, Stepper, toast } from '../components/ui';
+import { cx, DealChip, FullScreen, IconButton, Price, Stepper, toast } from '../components/ui';
 import { searchProducts } from '../data/catalog';
+import { changeQty } from '../lib/actions';
 import { costFor, promoLabel, sizeLabel, unitPrice } from '../lib/pricing';
-import { qtyUnit, storeTitle, usePricingOptions, useStoreLookup } from '../lib/view';
+import { qtyUnit, storeTitle, useChosenStores, usePricingOptions, useStoreLookup } from '../lib/view';
 import { stepFor, useApp } from '../state/app';
 import { useData } from '../state/data';
 import { useNav, type SearchMode } from '../state/nav';
@@ -21,7 +22,8 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
   const catalog = useData((s) => s.catalog);
   const index = useData((s) => s.index);
   const lookup = useStoreLookup();
-  const [query, setQuery] = useState(mode.kind === 'add' ? '' : mode.query);
+  const [query, setQuery] = useState(mode.query ?? '');
+  const [expanded, setExpanded] = useState<string | null>(null);
   const deferred = useDeferredValue(query);
 
   const onlyStore = mode.kind === 'substitute' ? mode.storeId : undefined;
@@ -95,11 +97,25 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
         ) : (
           <>
             {results.length > 0 ? (
-              <ul className="perforated bg-surface">
-                {results.map((p) => (
-                  <ResultRow key={p.pid} product={p} mode={mode} onPick={() => pick(p)} />
-                ))}
-              </ul>
+              <>
+                {mode.kind !== 'substitute' ? (
+                  <p className="px-5 pt-3 pb-2 text-sm text-muted">
+                    המחיר הוא הזול ביותר בין הסניפים שלך. לחץ על מוצר כדי לראות את המחיר בכל סניף.
+                  </p>
+                ) : null}
+                <ul className="perforated bg-surface">
+                  {results.map((p) => (
+                    <ResultRow
+                      key={p.pid}
+                      product={p}
+                      mode={mode}
+                      expanded={expanded === p.pid}
+                      onToggle={() => setExpanded((cur) => (cur === p.pid ? null : p.pid))}
+                      onPick={() => pick(p)}
+                    />
+                  ))}
+                </ul>
+              </>
             ) : (
               <p className="px-6 pt-10 text-center text-muted">
                 לא מצאנו "{trimmed}" בסניפים שבחרת. נסה מילה אחת פחות, או כתיב אחר.
@@ -129,13 +145,24 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
   );
 }
 
-function ResultRow({ product, mode, onPick }: { product: Product; mode: SearchMode; onPick: () => void }) {
+function ResultRow({
+  product,
+  mode,
+  expanded,
+  onToggle,
+  onPick,
+}: {
+  product: Product;
+  mode: SearchMode;
+  expanded: boolean;
+  onToggle: () => void;
+  onPick: () => void;
+}) {
   const opts = usePricingOptions();
   const storeCount = useData((s) => s.catalog.storeIds.length);
   const inList = useApp((s) => (mode.kind === 'add' ? s.items.find((i) => i.pids.includes(product.pid)) : undefined));
-  const setQty = useApp((s) => s.setQty);
 
-  // Cheapest single-unit price among the stores in scope, and the deal behind it if any.
+  // Cheapest single-unit price among the stores in scope, and the best deal on offer.
   let min = Infinity;
   let deal: Promo | null = null;
   const offers =
@@ -153,47 +180,93 @@ function ResultRow({ product, mode, onPick }: { product: Product; mode: SearchMo
   }
   const per = unitPrice(product, min);
   const meta = [sizeLabel(product), product.manufacturer].filter(Boolean).join(', ');
+  const canExpand = mode.kind !== 'substitute' && storeCount > 1;
 
   return (
-    <li className="flex items-center gap-3 py-3 ps-4 pe-3">
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 leading-snug font-medium">{product.name}</p>
-        {meta ? <p className="truncate text-sm text-muted">{meta}</p> : null}
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-          <span>
-            {offers.length > 1 ? 'מ-' : ''}
-            <Price value={min} className="text-ink" />
-          </span>
-          {per ? (
-            <span>
-              <Price value={per.value} className="font-normal" /> {per.per}
-            </span>
-          ) : null}
-          {deal ? <DealChip club={deal.club}>{promoLabel(deal)}</DealChip> : null}
-          {mode.kind !== 'substitute' && storeCount > 1 ? (
-            <span>
-              ב-{product.offers.size} מתוך {storeCount} סניפים
-            </span>
-          ) : null}
-        </p>
-      </div>
-      {inList ? (
-        <Stepper
-          value={inList.qty}
-          step={stepFor(product.weighted)}
-          unit={qtyUnit(product.weighted)}
-          onChange={(q) => setQty(inList.id, q)}
-        />
-      ) : (
+    <li>
+      <div className="flex items-center gap-3 py-3 ps-4 pe-3">
         <button
           type="button"
-          onClick={onPick}
-          aria-label={mode.kind === 'add' ? `הוסף את ${product.name}` : `בחר את ${product.name}`}
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-tag text-tag-ink active:brightness-95"
+          className="min-w-0 flex-1 text-start"
+          onClick={canExpand ? onToggle : undefined}
+          aria-expanded={canExpand ? expanded : undefined}
+          disabled={!canExpand}
         >
-          {mode.kind === 'add' ? <Plus className="size-5" strokeWidth={2.75} /> : <Check className="size-5" strokeWidth={2.75} />}
+          <span className="line-clamp-2 leading-snug font-medium">{product.name}</span>
+          {meta ? <span className="block truncate text-sm text-muted">{meta}</span> : null}
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+            <span>
+              {offers.length > 1 ? 'מ-' : ''}
+              <Price value={min} className="text-ink" />
+            </span>
+            {per ? (
+              <span>
+                <Price value={per.value} className="font-normal" /> {per.per}
+              </span>
+            ) : null}
+            {deal ? <DealChip club={deal.club}>{promoLabel(deal)}</DealChip> : null}
+            {canExpand ? (
+              <span className="inline-flex items-center gap-0.5">
+                ב-{product.offers.size} מתוך {storeCount} סניפים
+                <ChevronDown className={cx('size-4 transition-transform', expanded && 'rotate-180')} />
+              </span>
+            ) : null}
+          </span>
         </button>
-      )}
+        {inList ? (
+          <Stepper
+            value={inList.qty}
+            step={stepFor(product.weighted)}
+            unit={qtyUnit(product.weighted)}
+            onChange={(q) => changeQty(inList.id, q)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={onPick}
+            aria-label={mode.kind === 'add' ? `הוסף את ${product.name}` : `בחר את ${product.name}`}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-tag text-tag-ink active:brightness-95"
+          >
+            {mode.kind === 'add' ? <Plus className="size-5" strokeWidth={2.75} /> : <Check className="size-5" strokeWidth={2.75} />}
+          </button>
+        )}
+      </div>
+      {expanded ? <StorePrices product={product} /> : null}
     </li>
+  );
+}
+
+/** What each chosen store charges for one unit, cheapest first. */
+function StorePrices({ product }: { product: Product }) {
+  const stores = useChosenStores();
+  const index = useData((s) => s.index);
+  const opts = usePricingOptions();
+  const rows = stores
+    .map((store) => {
+      const offer = product.offers.get(store.id);
+      if (!offer) return { store, price: null, deal: null as Promo | null };
+      const usable = offer.promos.filter((p) => (!p.club || opts.includeClub) && (!p.end || p.end >= opts.today));
+      const deal = usable.sort((a, b) => a.price / a.minQty - b.price / b.minQty)[0] ?? null;
+      return { store, price: costFor(offer, 1, product.weighted, opts).total, deal };
+    })
+    .sort((a, b) => (a.price ?? Infinity) - (b.price ?? Infinity));
+  const cheapest = rows[0]?.price;
+
+  return (
+    <ul className="mx-4 mb-3 animate-fade rounded-xl bg-sunken px-3 py-1">
+      {rows.map(({ store, price, deal }) => (
+        <li key={store.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+          <span className="min-w-0 truncate">{storeTitle(store, index)}</span>
+          <span className="flex shrink-0 items-center gap-2">
+            {deal && deal.minQty > 1 ? <DealChip club={deal.club}>{promoLabel(deal)}</DealChip> : null}
+            {price === null ? (
+              <span className="text-muted">לא נמכר</span>
+            ) : (
+              <Price value={price} className={price === cheapest && rows.length > 1 ? 'font-bold text-save' : undefined} />
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

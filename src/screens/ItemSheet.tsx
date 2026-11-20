@@ -3,7 +3,8 @@ import { useEffect, useMemo } from 'react';
 import { Button, DealChip, IconButton, Price, Sheet, Stepper } from '../components/ui';
 import { suggestSubstitutes } from '../data/catalog';
 import { quoteLine } from '../engine/optimizer';
-import { costFor, formatPrice, promoLabel, sizeLabel, unitPrice } from '../lib/pricing';
+import { changeQty, removeWithUndo } from '../lib/actions';
+import { costFor, formatPrice, nextDeal, promoLabel, sizeLabel, unitPrice } from '../lib/pricing';
 import { qtyUnit, storeTitle, useChosenStores, usePricingOptions } from '../lib/view';
 import { stepFor, useApp } from '../state/app';
 import { useData } from '../state/data';
@@ -52,7 +53,7 @@ export function ItemSheet({ itemId }: { itemId: string }) {
           value={item.qty}
           step={stepFor(weighted)}
           unit={qtyUnit(weighted)}
-          onChange={(q) => useApp.getState().setQty(item.id, q)}
+          onChange={(q) => changeQty(item.id, q)}
         />
       </div>
 
@@ -119,7 +120,7 @@ export function ItemSheet({ itemId }: { itemId: string }) {
       <Button
         variant="danger"
         className="mt-4 w-full"
-        onClick={() => useApp.getState().removeItem(item.id)}
+        onClick={() => removeWithUndo(item.id)}
       >
         <Trash2 className="size-[1.15rem]" />
         הסר מהרשימה
@@ -129,6 +130,7 @@ export function ItemSheet({ itemId }: { itemId: string }) {
 }
 
 function PricedRow({
+  store,
   title,
   product,
   showProduct,
@@ -144,7 +146,11 @@ function PricedRow({
   qty: number;
   extra: number;
 }) {
+  const opts = usePricingOptions();
   const per = unitPrice(product, line.total / qty);
+  // A multi-buy deal this store offers that the current quantity does not reach yet.
+  const offer = product.offers.get(store.id);
+  const hint = offer ? nextDeal(offer, qty, opts) : null;
   return (
     <div className="flex items-start gap-3">
       <div className="min-w-0 flex-1">
@@ -152,7 +158,11 @@ function PricedRow({
         {showProduct ? <p className="truncate text-sm text-muted">{product.name}</p> : null}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
           {line.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo)}</DealChip> : null}
-          {line.promo?.club ? <span>לחברי מועדון</span> : null}
+          {hint ? (
+            <span>
+              בקניית {hint.minQty}: {promoLabel(hint)}
+            </span>
+          ) : null}
           {per ? (
             <span>
               <Price value={per.value} className="font-normal" /> {per.per}

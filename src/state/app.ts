@@ -14,13 +14,18 @@ interface AppState {
   settings: Settings;
   /** The store the shopper is standing in (in-store mode). */
   shopStoreId: string | null;
+  /** The "add to home screen" hint was dismissed. */
+  installHintDismissed: boolean;
 
   addProduct(product: Product, qty?: number): void;
   addFreeText(lines: ParsedLine[]): void;
   setQty(itemId: string, qty: number): void;
   toggleChecked(itemId: string): void;
   removeItem(itemId: string): void;
+  /** Put removed lines back where they were (undo). */
+  restoreItems(entries: Array<{ item: ListItem; index: number }>): void;
   clearChecked(): void;
+  clearAll(): void;
   /** Attach a product to a line. `primary` replaces the line's name (first match). */
   attachProduct(itemId: string, product: Product, primary: boolean): void;
   detachProduct(itemId: string, pid: string): void;
@@ -28,6 +33,7 @@ interface AppState {
   setStoreIds(ids: string[]): void;
   setSettings(patch: Partial<Settings>): void;
   setShopStore(id: string | null): void;
+  dismissInstallHint(): void;
 }
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
@@ -42,6 +48,7 @@ export const useApp = create<AppState>()(
       items: [],
       settings: { includeClub: false, splitThreshold: 30 },
       shopStoreId: null,
+      installHintDismissed: false,
 
       addProduct: (product, qty) =>
         set((s) => {
@@ -93,7 +100,18 @@ export const useApp = create<AppState>()(
 
       removeItem: (itemId) => set((s) => ({ items: s.items.filter((i) => i.id !== itemId) })),
 
+      restoreItems: (entries) =>
+        set((s) => {
+          const items = [...s.items];
+          for (const { item, index } of [...entries].sort((a, b) => a.index - b.index)) {
+            if (!items.some((i) => i.id === item.id)) items.splice(Math.min(index, items.length), 0, item);
+          }
+          return { items };
+        }),
+
       clearChecked: () => set((s) => ({ items: s.items.filter((i) => !i.checked) })),
+
+      clearAll: () => set({ items: [] }),
 
       attachProduct: (itemId, product, primary) =>
         set((s) => ({
@@ -118,10 +136,17 @@ export const useApp = create<AppState>()(
 
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       setShopStore: (id) => set({ shopStoreId: id }),
+      dismissInstallHint: () => set({ installHintDismissed: true }),
     }),
     {
       name: 'sal-hacham-v1',
-      partialize: ({ storeIds, items, settings, shopStoreId }) => ({ storeIds, items, settings, shopStoreId }),
+      partialize: ({ storeIds, items, settings, shopStoreId, installHintDismissed }) => ({
+        storeIds,
+        items,
+        settings,
+        shopStoreId,
+        installHintDismissed,
+      }),
     },
   ),
 );

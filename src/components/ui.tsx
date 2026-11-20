@@ -257,31 +257,63 @@ export function FullScreen({ onClose, children, label }: { onClose: () => void; 
 
 // ---- Feedback -----------------------------------------------------------------------------
 
+interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 interface ToastState {
   message: string | null;
-  show(message: string): void;
+  action: ToastAction | null;
+  show(message: string, action?: ToastAction): void;
+  dismiss(): void;
 }
 
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
 
 export const useToast = create<ToastState>()((set) => ({
   message: null,
-  show(message) {
+  action: null,
+  show(message, action) {
     clearTimeout(toastTimer);
-    set({ message });
-    toastTimer = setTimeout(() => set({ message: null }), 2600);
+    set({ message, action: action ?? null });
+    // A message that offers an undo stays long enough to be acted on.
+    toastTimer = setTimeout(() => set({ message: null, action: null }), action ? 6000 : 2600);
+  },
+  dismiss() {
+    clearTimeout(toastTimer);
+    set({ message: null, action: null });
   },
 }));
 
-export const toast = (message: string) => useToast.getState().show(message);
+export const toast = (message: string, action?: ToastAction) => useToast.getState().show(message, action);
 
 export function Toaster() {
   const message = useToast((s) => s.message);
+  const action = useToast((s) => s.action);
+  const dismiss = useToast((s) => s.dismiss);
   return (
     <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex justify-center px-6">
       {message ? (
-        <div className="animate-sheet rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-surface shadow-lg">
-          {message}
+        <div
+          className={cx(
+            'pointer-events-auto flex animate-sheet items-center gap-3 rounded-full bg-ink py-2 text-sm font-semibold text-surface shadow-lg',
+            action ? 'ps-5 pe-2' : 'px-5',
+          )}
+        >
+          <span className="py-1">{message}</span>
+          {action ? (
+            <button
+              type="button"
+              className="min-h-9 rounded-full bg-tag px-4 text-tag-ink"
+              onClick={() => {
+                action.run();
+                dismiss();
+              }}
+            >
+              {action.label}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

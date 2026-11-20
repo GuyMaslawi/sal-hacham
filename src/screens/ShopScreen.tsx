@@ -1,5 +1,5 @@
 import { Check } from 'lucide-react';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Button, cx, DealChip, EmptyState, Price, QtyBadge, toast } from '../components/ui';
 import { quoteLine, type Line } from '../engine/optimizer';
 import { nextDeal, promoLabel } from '../lib/pricing';
@@ -28,6 +28,32 @@ export function ShopScreen() {
   const comparison = useComparison();
   const opts = usePricingOptions();
   const go = useNav((s) => s.go);
+
+  // In the aisle the phone is glanced at, not touched: keep the screen from going dark.
+  useEffect(() => {
+    type Sentinel = { release(): Promise<void> };
+    const wakeLock = (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<Sentinel> } }).wakeLock;
+    if (!wakeLock) return;
+    let sentinel: Sentinel | undefined;
+    let cancelled = false;
+    const acquire = () =>
+      wakeLock
+        .request('screen')
+        .then((s) => {
+          if (cancelled) void s.release();
+          else sentinel = s;
+        })
+        .catch(() => undefined);
+    void acquire();
+    // The lock is dropped when the app goes to the background; take it again on return.
+    const onVisible = () => document.visibilityState === 'visible' && void acquire();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+      void sentinel?.release().catch(() => undefined);
+    };
+  }, []);
 
   // Default to the cheapest store until the shopper says where they are.
   const storeId = shopStoreId ?? comparison.quotes[0]?.storeId ?? stores[0]?.id;
@@ -181,7 +207,10 @@ function CheckRow({ row }: { row: ShopRow }) {
         role="checkbox"
         aria-checked={item.checked}
         aria-label={item.label}
-        onClick={() => toggle(item.id)}
+        onClick={() => {
+          navigator.vibrate?.(12);
+          toggle(item.id);
+        }}
         className="flex size-16 shrink-0 items-center justify-center"
       >
         <span

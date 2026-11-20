@@ -100,8 +100,9 @@ const amount = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximu
 /** "₪1,234.50". Always rendered left-to-right (see the `.num` class) so it reads the same in any sentence. */
 export const formatPrice = (n: number) => `₪${amount.format(n)}`;
 
-/** "2 ב-10 ₪" / "מבצע 12.90 ₪". */
+/** "2 ב-10 ₪" / "מבצע 12.90 ₪", marked when it is for club members only. */
 export function promoLabel(p: Promo): string {
   const price = Number.isInteger(p.price) ? String(p.price) : p.price.toFixed(2);
-  return p.minQty > 1 ? `${p.minQty} ב-${price} ₪` : `מבצע ${price} ₪`;
+  const deal = p.minQty > 1 ? `${p.minQty} ב-${price} ₪` : `מבצע ${price} ₪`;
+  return p.club ? `מועדון: ${deal}` : deal;
 }

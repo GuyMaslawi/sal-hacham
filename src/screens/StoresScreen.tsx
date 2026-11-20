@@ -1,5 +1,6 @@
-import { ArrowRight, Check, LoaderCircle, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { ArrowRight, Check, CircleHelp, LoaderCircle, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { InstallHint } from '../components/InstallHint';
 import { Button, cx, EmptyState, FullScreen, IconButton, Stepper, toast, Toggle } from '../components/ui';
 import { normalize } from '../lib/text';
 import { chainLabel, freshness, storePlace, storeTitle, useChosenStores } from '../lib/view';
@@ -118,6 +119,13 @@ export function StoresScreen() {
         </div>
       </section>
 
+      <InstallHint always />
+
+      <Button variant="outline" className="mx-4 mt-4 w-[calc(100%-2rem)]" onClick={() => open({ kind: 'help' })}>
+        <CircleHelp className="size-5" />
+        איך זה עובד ואיך לקרוא את המחירים
+      </Button>
+
       <p className="mx-6 mt-5 text-sm leading-relaxed text-muted">
         המחירים והמבצעים נלקחים מהקבצים שהרשתות מחויבות לפרסם לפי חוק שקיפות המחירים, ומתעדכנים פעם ביום. ייתכנו
         הבדלים מהמחיר על המדף; המחיר בקופה הוא הקובע. הרשימה והסניפים נשמרים רק במכשיר הזה.
@@ -227,6 +235,12 @@ export function StorePicker() {
         ) : !city ? (
           cityMatches.length + storeMatches.length > 0 ? (
             <>
+              {!q && chosen.length === 0 ? (
+                <p className="px-5 py-3 text-sm text-muted">
+                  בחר עיר, ואז שניים עד ארבעה סניפים שנוח לך להגיע אליהם. אפשר גם לחפש רשת או סניף בשם, ולשנות את
+                  הבחירה בכל רגע.
+                </p>
+              ) : null}
               {cityMatches.length > 0 ? (
                 <ul className="perforated bg-surface">
                   {cityMatches.map((c) => (

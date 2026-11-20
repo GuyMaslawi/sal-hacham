@@ -2,6 +2,7 @@ import { ListChecks, LoaderCircle, Scale, ShoppingCart, Store } from 'lucide-rea
 import { useEffect } from 'react';
 import { Button, cx, Toaster } from './components/ui';
 import { CompareScreen } from './screens/CompareScreen';
+import { HelpSheet } from './screens/HelpSheet';
 import { ItemSheet } from './screens/ItemSheet';
 import { ListScreen } from './screens/ListScreen';
 import { PasteSheet } from './screens/PasteSheet';
@@ -79,6 +80,8 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
       return <ItemSheet itemId={overlay.itemId} />;
     case 'stores':
       return <StorePicker />;
+    case 'help':
+      return <HelpSheet />;
   }
 }
 
@@ -169,9 +172,9 @@ function Welcome() {
 
   return (
     <div className="frame flex min-h-dvh flex-col bg-paper">
-      <div className="rounded-b-[2.5rem] bg-tag px-6 pt-[max(2.5rem,env(safe-area-inset-top))] pb-10 text-tag-ink">
+      <div className="rounded-b-[2.5rem] bg-tag px-6 pt-[max(2rem,env(safe-area-inset-top))] pb-8 text-tag-ink">
         <p className="text-lg font-bold">סל חכם</p>
-        <h1 className="mt-10 font-display text-[5.25rem] leading-[0.82] font-bold">
+        <h1 className="mt-6 font-display text-[4.75rem] leading-[0.82] font-bold">
           אותו סל.
           <br />
           סופר אחר.
@@ -180,22 +183,42 @@ function Welcome() {
         </h1>
       </div>
       <div className="flex flex-1 flex-col px-6 pt-7 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <p className="text-lg leading-relaxed">
-          בחר את הסניפים שאתה באמת קונה בהם, בנה רשימה, ותראה כמה היא עולה בכל אחד מהם לפי המחירים שהרשתות פרסמו היום.
-        </p>
+        <ol className="space-y-3.5">
+          {[
+            ['בוחרים סניפים', 'שניים עד ארבעה שנוח לך להגיע אליהם.'],
+            ['בונים רשימה', 'חיפוש, סריקת ברקוד, או הדבקה מוואטסאפ.'],
+            ['רואים איפה הכי זול', 'מחיר הסל כולו בכל סניף, לפי המחירים של היום.'],
+          ].map(([title, text], i) => (
+            <li key={title} className="flex items-start gap-3">
+              <span className="num flex size-9 shrink-0 items-center justify-center rounded-full bg-ink text-lg leading-none font-bold text-surface">
+                {i + 1}
+              </span>
+              <span>
+                <span className="block text-lg leading-tight font-bold">{title}</span>
+                <span className="block text-muted">{text}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
         {index ? (
-          <p className="mt-4 text-muted">
-            <span className="num font-semibold text-ink">{index.stores.length.toLocaleString('he-IL')}</span> סניפים ב-
-            <span className="num font-semibold text-ink">{cities}</span> ערים, מתעדכן כל יום. בלי הרשמה.
+          <p className="mt-5 text-sm text-muted">
+            <span className="num font-semibold text-ink">{index.stores.length.toLocaleString('en-US')}</span> סניפים של{' '}
+            <span className="num font-semibold text-ink">{index.chains.length}</span> רשתות ב-
+            <span className="num font-semibold text-ink">{cities}</span> ערים. חינם, בלי הרשמה, והרשימה נשארת אצלך בטלפון.
           </p>
         ) : indexError ? (
           <p className="mt-4 text-alert">לא הצלחנו להוריד את רשימת הסניפים. בדוק את החיבור לאינטרנט ופתח שוב.</p>
         ) : (
           <p className="mt-4 text-muted">טוען את רשימת הסניפים.</p>
         )}
-        <Button className="mt-auto w-full" disabled={!index} onClick={() => open({ kind: 'stores' })}>
-          בחר סניפים
-        </Button>
+        <div className="mt-auto pt-6">
+          <Button className="w-full" disabled={!index} onClick={() => open({ kind: 'stores' })}>
+            בחר סניפים
+          </Button>
+          <Button variant="quiet" className="mt-1 w-full" onClick={() => open({ kind: 'help' })}>
+            איך זה עובד?
+          </Button>
+        </div>
       </div>
     </div>
   );
