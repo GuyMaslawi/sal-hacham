@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { CHAINS, israelDate, type ChainAdapter, type RemoteFile } from './chains.ts';
-import { selectCarryOver } from './carry.ts';
+import { isStale, selectCarryOver } from './carry.ts';
 import { mapPool, request } from './http.ts';
 import { resolveCity, UNKNOWN_CITY } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type PriceItem, type RawStore } from './parse.ts';
@@ -113,6 +113,9 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
   let storeIds = [...priceFiles.keys()].sort((a, b) => Number(a) - Number(b));
   // Delivery-app storefronts are not places a shopper can walk into.
   storeIds = storeIds.filter((id) => !/^(וולט|wolt)/i.test(describe(id).name));
+  // Branches whose newest price list is weeks old have closed; leave them out.
+  const stale = new Set(storeIds.filter((id) => isStale(stampToIso(newest(priceFiles.get(id)!).stamp), today)));
+  storeIds = storeIds.filter((id) => !stale.has(id));
   if (args.cities) storeIds = storeIds.filter((id) => args.cities!.includes(describe(id).city));
   if (args.limit > 0) storeIds = storeIds.slice(0, args.limit);
 
@@ -175,6 +178,7 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
   console.log(
     `  [${chain.id}] ${entries.length} stores written` +
       (tooSmall ? `, ${tooSmall} skipped (fewer than ${MIN_ITEMS_PER_STORE} items)` : '') +
+      (stale.size ? `, ${stale.size} skipped (no price list for over two weeks)` : '') +
       (failed ? `, ${failed} failed` : ''),
   );
   return entries;

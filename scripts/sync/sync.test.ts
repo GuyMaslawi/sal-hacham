@@ -1,6 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
-import { selectCarryOver } from './carry.ts';
+import { isStale, selectCarryOver } from './carry.ts';
 import { describeFile } from './chains.ts';
 import { normalizeCode, normalizeQuantity, quantityFromName, resolveCity } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos } from './parse.ts';
@@ -207,5 +207,18 @@ describe('selectCarryOver', () => {
   it('never returns the same store twice', () => {
     const previous = [entry('a-1', '2026-11-20T04:00'), entry('a-1', '2026-11-20T04:00')];
     expect(selectCarryOver(previous, new Set(), '2026-11-21')).toHaveLength(1);
+  });
+});
+
+describe('isStale', () => {
+  it('flags price lists older than two weeks', () => {
+    expect(isStale('2026-11-20T04:31', '2026-11-21')).toBe(false);
+    expect(isStale('2026-11-07T04:31', '2026-11-21')).toBe(false);
+    expect(isStale('2026-11-06T04:31', '2026-11-21')).toBe(true);
+    expect(isStale('2024-03-28T10:00', '2026-11-21')).toBe(true);
+  });
+
+  it('does not drop a store over a date it cannot read', () => {
+    expect(isStale('', '2026-11-21')).toBe(false);
   });
 });

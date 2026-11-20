@@ -14,6 +14,17 @@ export interface CarryCandidate {
 /** Keep a carried store for this long; after that its prices are too old to be worth showing. */
 export const MAX_CARRY_DAYS = 14;
 
+/**
+ * True when a price list was published more than `maxAgeDays` before `today`. A branch whose
+ * newest file is that old has usually closed; the chain just never stopped listing its last
+ * file. An unreadable date is not treated as stale.
+ */
+export function isStale(publishedIso: string, today: string, maxAgeDays = MAX_CARRY_DAYS): boolean {
+  const published = Date.parse(publishedIso.slice(0, 10));
+  if (!Number.isFinite(published)) return false;
+  return published < Date.parse(today) - maxAgeDays * 86_400_000;
+}
+
 export function selectCarryOver<T extends CarryCandidate>(
   previous: T[],
   alreadyHave: ReadonlySet<string>,
