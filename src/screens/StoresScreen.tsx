@@ -1,7 +1,8 @@
-import { ArrowRight, Check, CircleHelp, LoaderCircle, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Check, CircleHelp, LoaderCircle, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { InstallHint } from '../components/InstallHint';
-import { Button, cx, EmptyState, FullScreen, IconButton, Stepper, toast, Toggle } from '../components/ui';
+import { TextSizeChoice } from '../components/TextSizeChoice';
+import { BackButton, Button, cx, EmptyState, FullScreen, IconButton, ScreenHeader, Stepper, toast, Toggle } from '../components/ui';
 import { normalize } from '../lib/text';
 import { chainLabel, freshness, storePlace, storeTitle, useChosenStores } from '../lib/view';
 import { MAX_STORES, useApp } from '../state/app';
@@ -34,9 +35,7 @@ export function StoresScreen() {
 
   return (
     <div className="pb-6">
-      <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
-        <h1 className="font-display text-[2.75rem] leading-none font-bold">הסניפים שלי</h1>
-      </header>
+      <ScreenHeader title="הסניפים שלי">הסופרים שאנחנו משווים ביניהם, והגדרות.</ScreenHeader>
 
       <ul className="perforated mx-4 rounded-2xl bg-surface">
         {stores.map((s) => {
@@ -98,6 +97,10 @@ export function StoresScreen() {
 
       <section className="mx-4 mt-6 rounded-2xl bg-surface">
         <div className="perforated">
+          <div className="p-4">
+            <p className="font-semibold">גודל הטקסט</p>
+            <TextSizeChoice />
+          </div>
           <div className="flex items-center gap-4 p-4">
             <div className="flex-1">
               <p className="font-semibold">לכלול מחירי מועדון</p>
@@ -206,9 +209,7 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
     <FullScreen onClose={close} label="בחירת סניפים">
       <div className="border-b-[1.5px] border-line bg-surface px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-1">
-          <IconButton label={city ? 'חזרה לרשימת הערים' : 'סגור'} onClick={back}>
-            <ArrowRight className="size-6" />
-          </IconButton>
+          <BackButton onClick={back} label={city ? 'כל הערים' : 'חזרה'} />
           <h2 className="flex-1 truncate text-lg font-bold">
             {city === NO_CITY ? 'סניפים בלי עיר רשומה' : (city ?? 'איפה אתה קונה?')}
           </h2>

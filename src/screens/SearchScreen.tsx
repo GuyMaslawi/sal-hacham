@@ -1,6 +1,6 @@
-import { ArrowRight, Check, ChevronDown, Plus, ScanBarcode, X } from 'lucide-react';
+import { Check, ChevronDown, Plus, ScanBarcode, X } from 'lucide-react';
 import { useDeferredValue, useMemo, useState } from 'react';
-import { cx, DealChip, FullScreen, IconButton, Price, Stepper, toast } from '../components/ui';
+import { BackButton, Button, cx, DealChip, FullScreen, IconButton, LabeledIconButton, Price, Stepper, toast } from '../components/ui';
 import { searchProducts } from '../data/catalog';
 import { changeQty } from '../lib/actions';
 import { costFor, promoLabel, sizeLabel, unitPrice } from '../lib/pricing';
@@ -24,6 +24,8 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
   const lookup = useStoreLookup();
   const [query, setQuery] = useState(mode.query ?? '');
   const [expanded, setExpanded] = useState<string | null>(null);
+  // How many things were added since this screen opened, for the "done" button.
+  const [added, setAdded] = useState(0);
   const deferred = useDeferredValue(query);
 
   const onlyStore = mode.kind === 'substitute' ? mode.storeId : undefined;
@@ -44,6 +46,8 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
       close();
     } else {
       app.addProduct(product);
+      setAdded((n) => n + 1);
+      toast(`נוסף לרשימה: ${product.name}`);
     }
   };
 
@@ -52,10 +56,11 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
   return (
     <FullScreen onClose={close} label={HEADINGS[mode.kind]}>
       <div className="border-b-[1.5px] border-line bg-surface px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
-        <div className="flex items-center gap-1">
-          <IconButton label="חזרה" onClick={close}>
-            <ArrowRight className="size-6" />
-          </IconButton>
+        <div className="flex items-center gap-2">
+          <BackButton onClick={close} />
+          <h2 className="min-w-0 flex-1 truncate text-lg font-bold">{HEADINGS[mode.kind]}</h2>
+        </div>
+        <div className="mt-2 flex items-center gap-1 ps-1">
           <div className="relative flex-1">
             <input
               type="search"
@@ -75,9 +80,9 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
             ) : null}
           </div>
           {mode.kind === 'add' ? (
-            <IconButton label="סרוק ברקוד" onClick={() => open({ kind: 'scan' })}>
+            <LabeledIconButton label="ברקוד" onClick={() => open({ kind: 'scan' })}>
               <ScanBarcode className="size-6" />
-            </IconButton>
+            </LabeledIconButton>
           ) : null}
         </div>
         {mode.kind !== 'add' ? (
@@ -92,7 +97,7 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
       <div className="flex-1 overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
         {!trimmed ? (
           <p className="px-6 pt-10 text-center text-muted">
-            כתוב מה אתה מחפש. אפשר כמה מילים, למשל "חלב 3% תנובה" או "אורז בסמטי".
+            כתוב מה אתה מחפש, למשל "חלב" או "אורז". אפשר להוסיף מילים כדי לדייק, כמו "חלב 3% תנובה".
           </p>
         ) : (
           <>
@@ -126,21 +131,30 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
                 type="button"
                 onClick={() => {
                   useApp.getState().addFreeText([{ label: trimmed, qty: 1 }]);
-                  toast(`"${trimmed}" נוסף לרשימה`);
+                  toast(`נוסף לרשימה: ${trimmed}`);
+                  setAdded((n) => n + 1);
                   setQuery('');
                 }}
                 className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center gap-3 rounded-xl border-[1.5px] border-dashed border-line px-4 py-3 text-start"
               >
                 <Plus className="size-5 shrink-0" />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">הוסף "{trimmed}" כתזכורת</span>
-                  <span className="block text-sm text-muted">בלי מחיר, עד שתבחר מוצר מסוים</span>
+                  <span className="block font-medium">הוסף לרשימה את המילה "{trimmed}"</span>
+                  <span className="block text-sm text-muted">בלי מחיר בינתיים. אפשר לבחור את המוצר המדויק אחר כך.</span>
                 </span>
               </button>
             ) : null}
           </>
         )}
       </div>
+      {mode.kind === 'add' && added > 0 ? (
+        <div className="border-t-[1.5px] border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Button variant="tag" className="w-full" onClick={close}>
+            <Check className="size-5" strokeWidth={2.75} />
+            סיימתי, חזרה לרשימה ({added === 1 ? 'נוסף מוצר אחד' : `נוספו ${added}`})
+          </Button>
+        </div>
+      ) : null}
     </FullScreen>
   );
 }

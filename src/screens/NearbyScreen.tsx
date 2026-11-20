@@ -1,6 +1,6 @@
-import { ArrowRight, Check, ChevronDown, LoaderCircle } from 'lucide-react';
+import { Check, ChevronDown, LoaderCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, cx, EmptyState, FullScreen, IconButton, toast } from '../components/ui';
+import { Button, cx, EmptyState, FullScreen, toast , BackButton } from '../components/ui';
 import { cityPoint, nearestCity, suggestStores, type Point, type Suggestion } from '../engine/nearby';
 import { chainLabel, storePlace } from '../lib/view';
 import { MAX_STORES, useApp } from '../state/app';
@@ -102,9 +102,7 @@ export function NearbyScreen({ city }: { city?: string }) {
     <FullScreen onClose={close} label="סופרים באזור שלך">
       <div className="border-b-[1.5px] border-line bg-surface px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3">
         <div className="flex items-center gap-1">
-          <IconButton label="חזרה" onClick={close}>
-            <ArrowRight className="size-6" />
-          </IconButton>
+          <BackButton onClick={close} />
           <h2 className="flex-1 truncate text-lg font-bold">
             {origin.state === 'ready' ? `הסופרים באזור ${origin.city}` : 'סופרים באזור שלך'}
           </h2>
@@ -120,7 +118,8 @@ export function NearbyScreen({ city }: { city?: string }) {
         {!index || origin.state === 'locating' ? (
           <div className="flex flex-col items-center gap-3 px-6 pt-16 text-center text-muted">
             <LoaderCircle className="size-8 animate-spin text-ink" />
-            <p>מאתר את האזור שלך. המיקום נשאר בטלפון ולא נשלח לאף אחד.</p>
+            <p className="text-lg font-semibold text-ink">מחפשים סופרים באזור שלך</p>
+            <p>אם הטלפון שואל אם לאשר גישה למיקום, לחץ "אישור". המיקום נשאר אצלך ולא נשלח לאף אחד.</p>
           </div>
         ) : origin.state === 'unavailable' || suggestions.length === 0 ? (
           <EmptyState

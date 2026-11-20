@@ -1,9 +1,10 @@
 // Shared building blocks. The price tag is the one loud element; the rest stay plain.
 
-import { Minus, Plus, X } from 'lucide-react';
+import { ArrowRight, CircleHelp, Minus, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { formatPrice } from '../lib/pricing';
+import { useNav } from '../state/nav';
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
@@ -70,7 +71,7 @@ export function DealChip({ children, club }: { children: ReactNode; club?: boole
   return (
     <span
       className={cx(
-        'inline-flex items-center rounded-sm px-1.5 py-px text-[0.78rem] leading-5 font-semibold whitespace-nowrap',
+        'inline-flex items-center rounded-sm px-1.5 py-px text-[0.85rem] leading-5 font-semibold whitespace-nowrap',
         club ? 'bg-ink text-surface' : 'bg-tag text-tag-ink',
       )}
     >
@@ -147,19 +148,21 @@ export function Stepper({
   onChange: (next: number) => void;
   size?: 'md' | 'lg';
 }) {
-  const btn = size === 'lg' ? 'size-12' : 'size-9';
+  const btn = size === 'lg' ? 'size-12' : 'size-11';
   const next = (delta: number) => Math.round((value + delta) * 100) / 100;
+  const removes = value - step <= 0;
   return (
     <div className="inline-flex shrink-0 items-center rounded-full border-[1.5px] border-line bg-surface" dir="ltr">
       <button
         type="button"
-        aria-label={value - step <= 0 ? 'הסר מהרשימה' : 'פחות'}
-        className={cx(btn, 'inline-flex items-center justify-center rounded-full active:bg-sunken')}
+        aria-label={removes ? 'הסר מהרשימה' : 'פחות'}
+        className={cx(btn, 'inline-flex items-center justify-center rounded-full active:bg-sunken', removes && 'text-alert')}
         onClick={() => onChange(next(-step))}
       >
-        <Minus className="size-4" strokeWidth={2.5} />
+        {/* At one unit, "minus" removes the line; say so with the icon. */}
+        {removes ? <Trash2 className="size-[1.1rem]" strokeWidth={2.25} /> : <Minus className="size-5" strokeWidth={2.5} />}
       </button>
-      <span className="num min-w-7 px-0.5 text-center text-[0.95rem] font-bold" aria-live="polite">
+      <span className="num min-w-7 px-0.5 text-center text-[1.05rem] font-bold" aria-live="polite">
         {value}
         {unit ? <span className="ms-0.5 font-sans text-xs font-medium text-muted">{unit}</span> : null}
       </span>
@@ -169,9 +172,45 @@ export function Stepper({
         className={cx(btn, 'inline-flex items-center justify-center rounded-full active:bg-sunken')}
         onClick={() => onChange(next(step))}
       >
-        <Plus className="size-4" strokeWidth={2.5} />
+        <Plus className="size-5" strokeWidth={2.5} />
       </button>
     </div>
+  );
+}
+
+/** The way back from a full screen: an arrow and the word, so nobody has to guess. */
+export function BackButton({ onClick, label = 'חזרה' }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full ps-1.5 pe-3 font-semibold text-ink active:bg-sunken"
+    >
+      <ArrowRight className="size-6" />
+      {label}
+    </button>
+  );
+}
+
+/** An icon with its name written under it, for actions an icon alone would not explain. */
+export function LabeledIconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-12 min-w-14 shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-1.5 text-[0.75rem] leading-tight font-semibold text-ink active:bg-sunken"
+    >
+      {children}
+      {label}
+    </button>
   );
 }
 
@@ -235,9 +274,14 @@ export function Sheet({
             <h2 className="text-lg leading-snug font-bold">{title}</h2>
             {subtitle ? <p className="mt-0.5 text-sm text-muted">{subtitle}</p> : null}
           </div>
-          <IconButton label="סגור" onClick={onClose} className="-me-2 -mt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="-me-2 -mt-1.5 inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 font-semibold active:bg-sunken"
+          >
             <X className="size-5" />
-          </IconButton>
+            סגור
+          </button>
         </div>
         <div className="px-5">{children}</div>
       </div>
@@ -249,7 +293,7 @@ export function Sheet({
 export function FullScreen({ onClose, children, label }: { onClose: () => void; children: ReactNode; label: string }) {
   useOverlay(onClose);
   return (
-    <div className="overlay flex animate-fade flex-col bg-paper" role="dialog" aria-modal="true" aria-label={label}>
+    <div className="overlay flex animate-page flex-col bg-paper" role="dialog" aria-modal="true" aria-label={label}>
       {children}
     </div>
   );
@@ -278,7 +322,8 @@ export const useToast = create<ToastState>()((set) => ({
     clearTimeout(toastTimer);
     set({ message, action: action ?? null });
     // A message that offers an undo stays long enough to be acted on.
-    toastTimer = setTimeout(() => set({ message: null, action: null }), action ? 6000 : 2600);
+    // Long enough to read without hurry; a message that offers an undo stays longer still.
+    toastTimer = setTimeout(() => set({ message: null, action: null }), action ? 8000 : 4000);
   },
   dismiss() {
     clearTimeout(toastTimer);
@@ -297,7 +342,7 @@ export function Toaster() {
       {message ? (
         <div
           className={cx(
-            'pointer-events-auto flex animate-sheet items-center gap-3 rounded-full bg-ink py-2 text-sm font-semibold text-surface shadow-lg',
+            'pointer-events-auto flex max-w-full animate-sheet items-center gap-3 rounded-2xl bg-ink py-2.5 text-base font-semibold text-surface shadow-lg',
             action ? 'ps-5 pe-2' : 'px-5',
           )}
         >
@@ -305,7 +350,7 @@ export function Toaster() {
           {action ? (
             <button
               type="button"
-              className="min-h-9 rounded-full bg-tag px-4 text-tag-ink"
+              className="min-h-11 shrink-0 rounded-xl bg-tag px-4 text-tag-ink"
               onClick={() => {
                 action.run();
                 dismiss();
@@ -317,6 +362,30 @@ export function Toaster() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The top of each main screen: its name, one line on what it is for, and a way to help that is
+ * always in the same place.
+ */
+export function ScreenHeader({ title, children }: { title: string; children?: ReactNode }) {
+  const open = useNav((s) => s.open);
+  return (
+    <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
+      <div className="flex items-start justify-between gap-3">
+        <h1 className="font-display text-[2.75rem] leading-none font-bold">{title}</h1>
+        <button
+          type="button"
+          onClick={() => open({ kind: 'help' })}
+          className="-me-2 inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-[0.95rem] font-semibold text-ink active:bg-sunken"
+        >
+          <CircleHelp className="size-5" />
+          עזרה
+        </button>
+      </div>
+      {children ? <p className="mt-1.5 text-muted">{children}</p> : null}
+    </header>
   );
 }
 

@@ -46,7 +46,7 @@ export const useApp = create<AppState>()(
     (set) => ({
       storeIds: [],
       items: [],
-      settings: { includeClub: false, splitThreshold: 30 },
+      settings: { includeClub: false, splitThreshold: 30, textSize: 'normal' },
       shopStoreId: null,
       installHintDismissed: false,
 
@@ -140,6 +140,11 @@ export const useApp = create<AppState>()(
     }),
     {
       name: 'sal-hacham-v1',
+      // Settings saved by an older version lack newer fields; fill them with defaults.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<AppState>;
+        return { ...current, ...p, settings: { ...current.settings, ...(p.settings ?? {}) } };
+      },
       partialize: ({ storeIds, items, settings, shopStoreId, installHintDismissed }) => ({
         storeIds,
         items,

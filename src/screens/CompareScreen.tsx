@@ -1,6 +1,6 @@
 import { ChevronDown, ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
-import { Button, cx, DealChip, EmptyState, Price, PriceTag, QtyBadge } from '../components/ui';
+import { Button, cx, DealChip, EmptyState, Price, PriceTag, QtyBadge, ScreenHeader } from '../components/ui';
 import type { Line, SplitPlan, StoreQuote } from '../engine/optimizer';
 import { formatPrice, promoLabel } from '../lib/pricing';
 import { freshness, storePlace, storeTitle, useComparison, useStoreLookup } from '../lib/view';
@@ -18,9 +18,7 @@ export function CompareScreen() {
   const { quotes, split, unmatched, unavailable, pricedCount } = comparison;
 
   const header = (
-    <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
-      <h1 className="font-display text-[2.75rem] leading-none font-bold">איפה הכי זול?</h1>
-    </header>
+    <ScreenHeader title="איפה הכי זול?" />
   );
 
   if (pricedCount === 0) {
@@ -62,6 +60,7 @@ export function CompareScreen() {
             <>המחיר כמעט זהה בכולם. </>
           )
         ) : null}
+        המחיר הגדול בכל כרטיס הוא כמה תשלם על כל הרשימה באותו סניף.{' '}
         <button type="button" className="font-semibold text-ink underline underline-offset-4" onClick={() => open({ kind: 'help' })}>
           איך זה מחושב?
         </button>
@@ -177,7 +176,7 @@ function StoreCard({
           <PriceTag value={quote.estimate} plain={!isBest} size={isBest ? 'md' : 'sm'} />
           {!isBest && gap >= 0.05 ? <span className="num text-sm font-semibold text-alert">+{formatPrice(gap)}</span> : null}
           <span className="inline-flex items-center gap-0.5 text-sm font-semibold text-muted">
-            {expanded ? 'סגור' : 'פירוט'}
+            {expanded ? 'הסתר' : 'מה בסל'}
             <ChevronDown className={cx('size-4 transition-transform', expanded && 'rotate-180')} />
           </span>
         </span>

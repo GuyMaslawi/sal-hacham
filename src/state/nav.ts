@@ -1,4 +1,9 @@
 // Which tab is showing and which overlays are stacked on top of it.
+//
+// Every step away from the list (another tab, then each screen opened on top) is also an entry
+// in the browser's history. That way the phone's back button and the swipe-back gesture do what
+// people expect: close what is open, then return to the list. Without this, "back" leaves the
+// app altogether, which is exactly the moment a less confident user gives up.
 
 import { create } from 'zustand';
 
@@ -28,16 +33,68 @@ interface NavState {
   stack: Overlay[];
   go(tab: Tab): void;
   open(overlay: Overlay): void;
+  /** Close the top overlay, the same way the phone's back button does. */
   close(): void;
 }
 
-export const useNav = create<NavState>()((set) => ({
+/** How many history entries the current screen sits above the list. */
+const depthOf = (tab: Tab, stack: Overlay[]) => (tab === 'list' ? 0 : 1) + stack.length;
+
+const historyDepth = () => {
+  const d = (window.history.state as { salDepth?: number } | null)?.salDepth;
+  return typeof d === 'number' ? d : 0;
+};
+
+export const useNav = create<NavState>()((set, get) => ({
   tab: 'list',
   stack: [],
+
   go: (tab) => {
+    const { tab: current, stack } = get();
+    const from = depthOf(current, stack);
+    const to = depthOf(tab, []);
     set({ tab, stack: [] });
     window.scrollTo({ top: 0 });
+    if (to > from) window.history.pushState({ salDepth: to }, '');
+    else if (to < from) window.history.go(to - from);
   },
-  open: (overlay) => set((s) => ({ stack: [...s.stack, overlay] })),
-  close: () => set((s) => ({ stack: s.stack.slice(0, -1) })),
+
+  open: (overlay) => {
+    const { tab, stack } = get();
+    const next = [...stack, overlay];
+    set({ stack: next });
+    window.history.pushState({ salDepth: depthOf(tab, next) }, '');
+  },
+
+  close: () => {
+    if (!get().stack.length) return;
+    // The popstate handler below does the actual closing.
+    window.history.back();
+  },
 }));
+
+/** Bring the screens in line with where the browser's history now stands. */
+function onPopState() {
+  const target = historyDepth();
+  const { tab, stack } = useNav.getState();
+  let excess = depthOf(tab, stack) - target;
+  if (excess <= 0) return; // Forward navigation, or already in step.
+  let nextStack = stack;
+  let nextTab = tab;
+  while (excess > 0 && nextStack.length) {
+    nextStack = nextStack.slice(0, -1);
+    excess--;
+  }
+  if (excess > 0 && nextTab !== 'list') {
+    nextTab = 'list';
+    window.scrollTo({ top: 0 });
+  }
+  useNav.setState({ tab: nextTab, stack: nextStack });
+}
+
+// After a reload the screens start from the list, but the browser may still hold entries for
+// screens that were open before. Step back over them so "back" is not dead for a few presses.
+const leftover = historyDepth();
+if (leftover > 0) window.history.go(-leftover);
+else window.history.replaceState({ salDepth: 0 }, '');
+window.addEventListener('popstate', onPopState);

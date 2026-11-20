@@ -1,6 +1,7 @@
 import { ListChecks, LoaderCircle, MapPin, Scale, ShoppingCart, Store } from 'lucide-react';
 import { useEffect } from 'react';
 import { Button, cx, Toaster } from './components/ui';
+import type { TextSize } from './types';
 import { CompareScreen } from './screens/CompareScreen';
 import { HelpSheet } from './screens/HelpSheet';
 import { ItemSheet } from './screens/ItemSheet';
@@ -20,8 +21,15 @@ let lastRefresh = Date.now();
 export default function App() {
   const ready = useData((s) => s.ready);
   const hasStores = useApp((s) => s.storeIds.length > 0);
+  const textSize = useApp((s) => s.settings.textSize);
   const tab = useNav((s) => s.tab);
   const overlay = useNav((s) => s.stack[s.stack.length - 1]);
+
+  // Text size applies to the whole page (everything is sized relative to it).
+  useEffect(() => {
+    if (textSize === 'normal') delete document.documentElement.dataset.text;
+    else document.documentElement.dataset.text = textSize;
+  }, [textSize]);
 
   // Load the saved data. Keyed on `ready` so a store that was re-created (hot reload) loads too.
   useEffect(() => {
@@ -51,12 +59,15 @@ export default function App() {
   return (
     <>
       {hasStores ? (
-        <div className="frame min-h-dvh pb-[calc(4.5rem+env(safe-area-inset-bottom))]">
+        <div className="frame min-h-dvh pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
           <DownloadStatus />
-          {tab === 'list' ? <ListScreen /> : null}
-          {tab === 'compare' ? <CompareScreen /> : null}
-          {tab === 'shop' ? <ShopScreen /> : null}
-          {tab === 'stores' ? <StoresScreen /> : null}
+          {/* A short fade marks that the screen changed, without moving anything around. */}
+          <main key={tab} className="animate-fade">
+            {tab === 'list' ? <ListScreen /> : null}
+            {tab === 'compare' ? <CompareScreen /> : null}
+            {tab === 'shop' ? <ShopScreen /> : null}
+            {tab === 'stores' ? <StoresScreen /> : null}
+          </main>
           <TabBar />
         </div>
       ) : (
@@ -98,18 +109,18 @@ function DownloadStatus() {
     <div
       role="status"
       className={cx(
-        'flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold',
+        'flex flex-wrap items-center justify-center gap-x-2 px-4 py-2.5 text-center text-[0.95rem] font-semibold',
         busy ? 'bg-tag text-tag-ink' : 'bg-alert text-white',
       )}
     >
       {busy ? (
         <>
           <LoaderCircle className="size-4 animate-spin" />
-          מוריד מחירים עדכניים
+          רגע, מורידים את המחירים של הסניפים שלך
         </>
       ) : (
         <>
-          חסרים מחירים ל-{failed === 1 ? 'סניף אחד' : `${failed} סניפים`}.
+          לא הצלחנו להוריד מחירים ל{failed === 1 ? 'סניף אחד' : `-${failed} סניפים`}. בדוק את האינטרנט.
           <button type="button" className="underline underline-offset-4" onClick={() => void useData.getState().refresh()}>
             נסה שוב
           </button>
@@ -145,7 +156,7 @@ function TabBar() {
               aria-current={active ? 'page' : undefined}
               onClick={() => go(id)}
               className={cx(
-                'flex h-[4.25rem] flex-1 flex-col items-center justify-center gap-0.5 text-[0.8rem]',
+                'flex h-[4.5rem] flex-1 flex-col items-center justify-center gap-0.5 text-[0.9rem]',
                 active ? 'font-bold text-ink' : 'font-medium text-muted',
               )}
             >
@@ -166,6 +177,25 @@ function TabBar() {
   );
 }
 
+const NEXT_SIZE: Record<TextSize, TextSize> = { normal: 'large', large: 'xl', xl: 'normal' };
+
+/** One tap on the first screen makes everything bigger; the full choice is under "stores". */
+function TextSizeToggle() {
+  const textSize = useApp((s) => s.settings.textSize);
+  const setSettings = useApp((s) => s.setSettings);
+  return (
+    <button
+      type="button"
+      onClick={() => setSettings({ textSize: NEXT_SIZE[textSize] })}
+      className="inline-flex min-h-11 items-center gap-1.5 rounded-full border-2 border-tag-ink px-3.5 font-bold"
+    >
+      <span aria-hidden className="text-sm">א</span>
+      <span aria-hidden className="text-xl leading-none">א</span>
+      {textSize === 'xl' ? 'טקסט רגיל' : 'הגדל טקסט'}
+    </button>
+  );
+}
+
 /** First run: nothing to compare until the shopper says where they shop. */
 function Welcome() {
   const index = useData((s) => s.index);
@@ -175,8 +205,11 @@ function Welcome() {
 
   return (
     <div className="frame flex min-h-dvh flex-col bg-paper">
-      <div className="rounded-b-[2.5rem] bg-tag px-6 pt-[max(2rem,env(safe-area-inset-top))] pb-8 text-tag-ink">
-        <p className="text-lg font-bold">סל חכם</p>
+      <div className="rounded-b-[2.5rem] bg-tag px-6 pt-[max(1.25rem,env(safe-area-inset-top))] pb-8 text-tag-ink">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-lg font-bold">סל חכם</p>
+          <TextSizeToggle />
+        </div>
         <h1 className="mt-6 font-display text-[4.75rem] leading-[0.82] font-bold">
           אותו סל.
           <br />
@@ -219,7 +252,9 @@ function Welcome() {
             <MapPin className="size-5" />
             מצא סופרים לידי
           </Button>
-          <p className="mt-1.5 text-center text-sm text-muted">המיקום נשאר בטלפון שלך ולא נשלח לאף אחד.</p>
+          <p className="mt-1.5 text-center text-sm text-muted">
+            הטלפון ישאל אם לאשר גישה למיקום. המיקום נשאר אצלך ולא נשלח לאף אחד.
+          </p>
           <div className="mt-2 flex gap-2">
             <Button variant="outline" className="flex-1" disabled={!index} onClick={() => open({ kind: 'stores', quick: true })}>
               בחר עיר

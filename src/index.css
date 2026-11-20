@@ -27,6 +27,7 @@
   --animate-sheet: sheet-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
   --animate-fade: fade-in 0.2s ease-out;
   --animate-pop: pop 0.25s ease-out;
+  --animate-page: page-in 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
 :root {
@@ -34,7 +35,7 @@
   --surface: #ffffff;
   --sunken: #f4f6f7;
   --ink: #15171c;
-  --muted: #5f6875;
+  --muted: #4c5562;
   --line: #d3d8de;
   --tag: #ffd60a;
   --tag-ink: #1c1700;
@@ -63,6 +64,13 @@
     opacity: 0;
   }
 }
+/* A screen opened on top of another comes in from the left: forward, in a right-to-left app. */
+@keyframes page-in {
+  from {
+    transform: translateX(-28px);
+    opacity: 0;
+  }
+}
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -76,6 +84,7 @@
 
 @layer base {
   html {
+    font-size: 100%;
     background: var(--paper);
     color: var(--ink);
     font-family: var(--font-sans);
@@ -135,6 +144,14 @@
     direction: ltr;
     unicode-bidi: isolate;
   }
+}
+
+/* Text size chosen in the app. Everything is sized in rem, so the whole interface scales. */
+html[data-text='large'] {
+  font-size: 115%;
+}
+html[data-text='xl'] {
+  font-size: 130%;
 }
 
 @media (prefers-reduced-motion: reduce) {

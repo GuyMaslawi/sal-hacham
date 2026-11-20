@@ -96,4 +96,8 @@ export interface Settings {
   includeClub: boolean;
   /** Minimum saving, in shekels, that makes shopping in two stores worth suggesting. */
   splitThreshold: number;
+  /** How large everything is drawn. */
+  textSize: TextSize;
 }
+
+export type TextSize = 'normal' | 'large' | 'xl';

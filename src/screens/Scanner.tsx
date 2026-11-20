@@ -1,6 +1,5 @@
-import { ArrowRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, FullScreen, IconButton, Price, toast } from '../components/ui';
+import { Button, FullScreen, Price, toast , BackButton } from '../components/ui';
 import { findByBarcode } from '../data/catalog';
 import { costFor, sizeLabel } from '../lib/pricing';
 import { storeTitle, useChosenStores, usePricingOptions } from '../lib/view';
@@ -116,9 +115,7 @@ export function Scanner() {
   return (
     <FullScreen onClose={close} label="סריקת ברקוד">
       <div className="flex items-center gap-1 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] pb-2">
-        <IconButton label="חזרה" onClick={close}>
-          <ArrowRight className="size-6" />
-        </IconButton>
+        <BackButton onClick={close} />
         <h2 className="text-lg font-bold">סריקת ברקוד</h2>
       </div>
 

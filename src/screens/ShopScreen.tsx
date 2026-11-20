@@ -1,6 +1,6 @@
 import { Check } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
-import { Button, cx, DealChip, EmptyState, Price, QtyBadge, toast } from '../components/ui';
+import { Button, cx, DealChip, EmptyState, Price, QtyBadge, ScreenHeader, toast } from '../components/ui';
 import { quoteLine, type Line } from '../engine/optimizer';
 import { nextDeal, promoLabel } from '../lib/pricing';
 import { storeTitle, useChosenStores, useComparison, usePricingOptions } from '../lib/view';
@@ -80,9 +80,9 @@ export function ShopScreen() {
   }, [items, storeId, catalog, opts, stores]);
 
   const header = (
-    <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-3">
-      <h1 className="font-display text-[2.75rem] leading-none font-bold">בסופר</h1>
-    </header>
+    <ScreenHeader title="בסופר">
+      {items.length ? 'סמן כל מוצר כשהוא נכנס לעגלה. בחר למעלה באיזה סניף אתה נמצא.' : null}
+    </ScreenHeader>
   );
 
   if (items.length === 0) {

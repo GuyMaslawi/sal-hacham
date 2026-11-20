@@ -1,7 +1,7 @@
 import { ChevronLeft, ClipboardList, ScanBarcode, Search, Share2, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { InstallHint } from '../components/InstallHint';
-import { Button, DealChip, IconButton, Price, PriceTag, QtyBadge, Stepper } from '../components/ui';
+import { Button, DealChip, LabeledIconButton, Price, PriceTag, QtyBadge, ScreenHeader, Stepper } from '../components/ui';
 import { searchProducts } from '../data/catalog';
 import { changeQty, clearListWithUndo, shareList } from '../lib/actions';
 import { costFor, promoLabel } from '../lib/pricing';
@@ -53,26 +53,26 @@ export function ListScreen() {
 
   return (
     <div className="pb-4">
-      <header className="px-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
-        <h1 className="font-display text-[2.75rem] leading-none font-bold">הרשימה שלי</h1>
-      </header>
+      <ScreenHeader title="הרשימה שלי">
+        {items.length ? 'מה שצריך לקנות. ליד כל מוצר: כמה הוא עולה בסניפים שלך.' : null}
+      </ScreenHeader>
 
-      <div className="sticky top-0 z-20 bg-paper px-4 pt-3 pb-3">
-        <div className="flex items-center gap-1 rounded-2xl border-[1.5px] border-ink bg-surface ps-1 pe-1.5">
+      <div className="sticky top-0 z-20 bg-paper px-4 pt-1 pb-3">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}
-            className="flex min-h-13 flex-1 items-center gap-3 rounded-xl px-3 text-start text-muted"
+            className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl border-[1.5px] border-ink bg-surface px-4 text-start"
           >
-            <Search className="size-5 shrink-0 text-ink" strokeWidth={2.25} />
-            <span>מה צריך לקנות?</span>
+            <Search className="size-5 shrink-0" strokeWidth={2.25} />
+            <span className="truncate text-muted">הוסף מוצר</span>
           </button>
-          <IconButton label="הדבק רשימה" onClick={() => open({ kind: 'paste' })}>
-            <ClipboardList className="size-[1.35rem]" />
-          </IconButton>
-          <IconButton label="סרוק ברקוד" onClick={() => open({ kind: 'scan' })}>
-            <ScanBarcode className="size-[1.35rem]" />
-          </IconButton>
+          <LabeledIconButton label="ברקוד" onClick={() => open({ kind: 'scan' })}>
+            <ScanBarcode className="size-6" />
+          </LabeledIconButton>
+          <LabeledIconButton label="הדבקה" onClick={() => open({ kind: 'paste' })}>
+            <ClipboardList className="size-6" />
+          </LabeledIconButton>
         </div>
       </div>
 
@@ -91,19 +91,19 @@ export function ListScreen() {
             )}
           </ul>
 
-          <div className="mx-4 mt-2 flex">
-            <Button variant="quiet" className="flex-1 text-[0.95rem]" onClick={() => void shareList()}>
+          <div className="mx-4 mt-2 flex flex-wrap">
+            <Button variant="quiet" className="flex-1 text-[0.95rem] whitespace-nowrap" onClick={() => void shareList()}>
               <Share2 className="size-[1.1rem]" />
               שתף רשימה
             </Button>
-            <Button variant="quiet" className="flex-1 text-[0.95rem]" onClick={clearListWithUndo}>
+            <Button variant="quiet" className="flex-1 text-[0.95rem] whitespace-nowrap" onClick={clearListWithUndo}>
               <Trash2 className="size-[1.1rem]" />
               נקה הכול
             </Button>
           </div>
 
           <p className="mt-1 px-6 text-sm text-muted">
-            המחיר שליד כל מוצר הוא הטווח בין הסניף הזול ליקר שבחרת. המחירים לפי מה שהרשתות פרסמו; בקופה קובע
+            ליד כל מוצר: המחיר בסניף הזול ובסניף היקר מבין אלה שבחרת. המחירים לפי מה שהרשתות פרסמו; בקופה קובע
             המחיר שם.
           </p>
         </>
@@ -142,12 +142,13 @@ function EmptyList() {
           <Search className="size-5" />
           חפש מוצר
         </Button>
-        <div className="flex gap-2">
-          <Button variant="outline" className="flex-1" onClick={() => open({ kind: 'paste' })}>
+        {/* Wraps to one button per line when the text is large. */}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" className="min-w-[45%] flex-1 whitespace-nowrap" onClick={() => open({ kind: 'paste' })}>
             <ClipboardList className="size-5" />
             הדבק רשימה
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => open({ kind: 'scan' })}>
+          <Button variant="outline" className="min-w-[45%] flex-1 whitespace-nowrap" onClick={() => open({ kind: 'scan' })}>
             <ScanBarcode className="size-5" />
             סרוק ברקוד
           </Button>
@@ -176,7 +177,7 @@ function BestStoreBanner() {
     >
       <span className="min-w-0 flex-1">
         <span className="block text-sm opacity-75">הסל הכי זול ב</span>
-        <span className="block truncate text-lg leading-tight font-bold">{storeTitle(store, index)}</span>
+        <span className="block text-lg leading-tight font-bold">{storeTitle(store, index)}</span>
         <span className="mt-0.5 block text-sm opacity-75">
           {best.missing.length > 0 ? (
             <>כולל הערכה {best.missing.length === 1 ? 'למוצר אחד שחסר' : `ל-${best.missing.length} מוצרים שחסרים`} שם</>
@@ -191,8 +192,13 @@ function BestStoreBanner() {
           )}
         </span>
       </span>
-      <PriceTag value={best.estimate} />
-      <ChevronLeft className="size-5 shrink-0 opacity-60" />
+      <span className="flex shrink-0 flex-col items-center gap-1">
+        <PriceTag value={best.estimate} />
+        <span className="inline-flex items-center text-sm font-semibold">
+          להשוואה
+          <ChevronLeft className="size-4" />
+        </span>
+      </span>
     </button>
   );
 }
@@ -258,9 +264,14 @@ function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefin
   const priced = prices && Number.isFinite(prices.min);
 
   return (
-    <li className="flex items-center gap-3 py-3 ps-4 pe-3">
-      <button type="button" className="min-w-0 flex-1 text-start" onClick={() => open({ kind: 'item', itemId: item.id })}>
-        <span className="line-clamp-2 leading-snug font-medium">{item.label}</span>
+    // With large text the quantity buttons move under the name instead of squeezing it.
+    <li className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2 py-3 ps-4 pe-3">
+      <button
+        type="button"
+        className="min-w-[9.5rem] flex-1 text-start"
+        onClick={() => open({ kind: 'item', itemId: item.id })}
+      >
+        <span className="line-clamp-3 leading-snug font-medium">{item.label}</span>
         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           {priced ? (
             <>
