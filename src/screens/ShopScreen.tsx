@@ -1,6 +1,7 @@
 import { Check } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
-import { Button, cx, DealChip, EmptyState, Price, QtyBadge, ScreenHeader, toast } from '../components/ui';
+import { Button, cx, DealChip, EmptyState, Price, QtyBadge, ScreenHeader } from '../components/ui';
+import { finishShopping } from '../lib/actions';
 import { quoteLine, type Line } from '../engine/optimizer';
 import { nextDeal, promoLabel } from '../lib/pricing';
 import { storeTitle, useChosenStores, useComparison, usePricingOptions } from '../lib/view';
@@ -28,6 +29,7 @@ export function ShopScreen() {
   const comparison = useComparison();
   const opts = usePricingOptions();
   const go = useNav((s) => s.go);
+  const open = useNav((s) => s.open);
 
   // In the aisle the phone is glanced at, not touched: keep the screen from going dark.
   useEffect(() => {
@@ -102,7 +104,7 @@ export function ShopScreen() {
   const expected = rows.reduce((n, r) => n + (r.line?.total ?? 0), 0);
 
   return (
-    <div className="pb-28">
+    <div className="pb-48">
       {header}
 
       {stores.length > 1 ? (
@@ -138,33 +140,17 @@ export function ShopScreen() {
       ) : (
         <div className="mx-4 rounded-2xl bg-tag p-5 text-center text-tag-ink">
           <p className="font-display text-4xl leading-none font-bold">הכול בעגלה</p>
-          <Button
-            className="mt-4"
-            onClick={() => {
-              useApp.getState().clearChecked();
-              toast('הרשימה נוקתה');
-              go('list');
-            }}
-          >
-            סיימתי, נקה את הרשימה
+          <Button className="mt-4" onClick={finishShopping}>
+            סיימתי לקנות
           </Button>
         </div>
       )}
 
       {done.length > 0 ? (
         <>
-          <div className="mt-5 flex items-center justify-between px-5">
-            <h2 className="text-sm font-semibold text-muted">בעגלה ({done.length})</h2>
-            {todo.length > 0 ? (
-              <button
-                type="button"
-                className="text-sm font-semibold underline underline-offset-4"
-                onClick={() => useApp.getState().clearChecked()}
-              >
-                הסר מהרשימה
-              </button>
-            ) : null}
-          </div>
+          <h2 className="mt-5 px-5 font-semibold text-muted">
+            כבר בעגלה ({done.length}). לחץ שוב על העיגול אם סימנת בטעות.
+          </h2>
           <ul className="perforated mx-4 mt-2 rounded-2xl bg-surface">
             {done.map((r) => (
               <CheckRow key={r.item.id} row={r} />
@@ -174,9 +160,10 @@ export function ShopScreen() {
       ) : null}
 
       {/* Running total, parked just above the tab bar. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-30">
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30">
         <div className="frame px-4">
-          <div className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl bg-ink px-4 py-3 text-surface shadow-lg">
+          <div className="pointer-events-auto rounded-2xl bg-ink px-4 pt-3 pb-3 text-surface shadow-lg">
+          <div className="flex items-center justify-between gap-4">
             <span className="text-sm">
               <span className="num font-bold">{done.length}</span> מתוך <span className="num font-bold">{rows.length}</span> בעגלה
             </span>
@@ -186,6 +173,12 @@ export function ShopScreen() {
                 צפוי בקופה <Price value={expected} className="font-normal" />
               </span>
             </span>
+          </div>
+          {todo.length > 0 ? (
+            <Button variant="tag" className="mt-2.5 min-h-11 w-full" onClick={() => open({ kind: 'finish' })}>
+              סיימתי לקנות
+            </Button>
+          ) : null}
           </div>
         </div>
       </div>

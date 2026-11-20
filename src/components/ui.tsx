@@ -258,11 +258,14 @@ export function Sheet({
   subtitle,
   onClose,
   children,
+  footer,
 }: {
   title: string;
   subtitle?: string;
   onClose: () => void;
   children: ReactNode;
+  /** The way onward, kept in view at the bottom of the panel. */
+  footer?: ReactNode;
 }) {
   useOverlay(onClose);
   return (
@@ -284,6 +287,9 @@ export function Sheet({
           </button>
         </div>
         <div className="px-5">{children}</div>
+        {footer ? (
+          <div className="sticky bottom-0 mt-4 border-t-[1.5px] border-line bg-surface px-5 pt-3">{footer}</div>
+        ) : null}
       </div>
     </div>
   );

@@ -39,6 +39,7 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
     const app = useApp.getState();
     if (mode.kind === 'match') {
       app.attachProduct(mode.itemId, product, true);
+      toast(`נבחר: ${product.name}`);
       close();
     } else if (mode.kind === 'substitute') {
       app.attachProduct(mode.itemId, product, false);

@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { Button, cx, Toaster } from './components/ui';
 import type { TextSize } from './types';
 import { CompareScreen } from './screens/CompareScreen';
+import { FinishSheet } from './screens/FinishSheet';
 import { HelpSheet } from './screens/HelpSheet';
 import { ItemSheet } from './screens/ItemSheet';
 import { ListScreen } from './screens/ListScreen';
@@ -96,6 +97,8 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
       return <NearbyScreen key={overlay.city ?? 'here'} city={overlay.city} />;
     case 'help':
       return <HelpSheet />;
+    case 'finish':
+      return <FinishSheet />;
   }
 }
 

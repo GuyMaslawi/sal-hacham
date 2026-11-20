@@ -307,10 +307,13 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
         )}
       </div>
 
-      {chosen.length > 0 ? (
+      {chosen.length > 0 || city ? (
         <div className="absolute inset-x-0 bottom-0 border-t-[1.5px] border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <Button variant="tag" className="w-full" onClick={close}>
-            {chosen.length === 1 ? 'המשך עם סניף אחד' : `המשך עם ${chosen.length} סניפים`}
+          {chosen.length === 0 ? (
+            <p className="pb-2 text-center text-sm text-muted">לחץ על סניף כדי לסמן אותו.</p>
+          ) : null}
+          <Button variant="tag" className="w-full" disabled={chosen.length === 0} onClick={close}>
+            {chosen.length === 0 ? 'עוד לא נבחר סניף' : chosen.length === 1 ? 'המשך עם סניף אחד' : `המשך עם ${chosen.length} סניפים`}
           </Button>
         </div>
       ) : null}

@@ -1,4 +1,4 @@
-import { ChevronDown, ShoppingCart } from 'lucide-react';
+import { ChevronDown, ChevronRight, ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
 import { Button, cx, DealChip, EmptyState, Price, PriceTag, QtyBadge, ScreenHeader } from '../components/ui';
 import type { Line, SplitPlan, StoreQuote } from '../engine/optimizer';
@@ -122,6 +122,24 @@ export function CompareScreen() {
           </ul>
         </section>
       ) : null}
+
+      <div className="mx-4 mt-6 space-y-2">
+        <Button
+          variant="tag"
+          className="w-full"
+          onClick={() => {
+            useApp.getState().setShopStore(best.storeId);
+            go('shop');
+          }}
+        >
+          <ShoppingCart className="size-5" />
+          הבא: יוצאים לקנות
+        </Button>
+        <Button variant="outline" className="w-full" onClick={() => go('list')}>
+          <ChevronRight className="size-5" />
+          חזרה לרשימה
+        </Button>
+      </div>
     </div>
   );
 }

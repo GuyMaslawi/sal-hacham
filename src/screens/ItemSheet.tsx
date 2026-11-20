@@ -15,6 +15,7 @@ import type { ListItem, Product, StoreInfo } from '../types';
 export function ItemSheet({ itemId }: { itemId: string }) {
   const close = useNav((s) => s.close);
   const open = useNav((s) => s.open);
+  const tab = useNav((s) => s.tab);
   const item = useApp((s) => s.items.find((i) => i.id === itemId));
   const catalog = useData((s) => s.catalog);
   const index = useData((s) => s.index);
@@ -45,6 +46,11 @@ export function ItemSheet({ itemId }: { itemId: string }) {
       title={item.label}
       subtitle={main ? [sizeLabel(main), main.manufacturer].filter(Boolean).join(', ') : undefined}
       onClose={close}
+      footer={
+        <Button className="w-full" onClick={close}>
+          {tab === 'shop' ? 'חזרה לקנייה' : 'חזרה לרשימה'}
+        </Button>
+      }
     >
       <div className="mt-1 flex items-center justify-between gap-3">
         <span className="font-medium">{weighted ? 'כמה ק"ג?' : 'כמה יחידות?'}</span>

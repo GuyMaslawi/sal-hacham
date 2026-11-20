@@ -2,6 +2,7 @@
 
 import { toast } from '../components/ui';
 import { useApp } from '../state/app';
+import { useNav } from '../state/nav';
 
 /** Remove a line, with a few seconds to change your mind. */
 export function removeWithUndo(itemId: string) {
@@ -43,4 +44,22 @@ export async function shareList() {
     // Closing the share sheet is not an error.
     if ((err as Error).name !== 'AbortError') toast('השיתוף לא הצליח');
   }
+}
+
+/**
+ * End a shopping trip: what went into the cart leaves the list, what did not stays for next
+ * time, and the shopper is taken back to the list. Can be undone for a few seconds.
+ */
+export function finishShopping() {
+  const { items, clearChecked, restoreItems } = useApp.getState();
+  const bought = items.map((item, index) => ({ item, index })).filter((e) => e.item.checked);
+  const left = items.length - bought.length;
+  clearChecked();
+  useNav.getState().go('list');
+  toast(
+    left > 0
+      ? `הקנייה הסתיימה. ${left === 1 ? 'מוצר אחד נשאר' : `${left} מוצרים נשארו`} ברשימה לפעם הבאה`
+      : 'הקנייה הסתיימה. הרשימה ריקה ומוכנה לפעם הבאה',
+    bought.length ? { label: 'בטל', run: () => restoreItems(bought) } : undefined,
+  );
 }

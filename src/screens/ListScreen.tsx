@@ -25,6 +25,7 @@ const STAPLES = ['חלב', 'לחם', 'ביצים', "קוטג'", 'עגבניות'
 export function ListScreen() {
   const items = useApp((s) => s.items);
   const open = useNav((s) => s.open);
+  const go = useNav((s) => s.go);
   const comparison = useComparison();
 
   // Per line: the cheapest and dearest store, and whether a deal is in play.
@@ -90,6 +91,13 @@ export function ListScreen() {
               ),
             )}
           </ul>
+
+          {comparison.pricedCount > 0 ? (
+            <Button className="mx-4 mt-3 w-[calc(100%-2rem)]" onClick={() => go('compare')}>
+              הבא: איפה הכי זול?
+              <ChevronLeft className="size-5" />
+            </Button>
+          ) : null}
 
           <div className="mx-4 mt-2 flex flex-wrap">
             <Button variant="quiet" className="flex-1 text-[0.95rem] whitespace-nowrap" onClick={() => void shareList()}>

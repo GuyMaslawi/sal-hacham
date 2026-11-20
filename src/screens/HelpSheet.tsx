@@ -1,12 +1,20 @@
 import type { ReactNode } from 'react';
-import { DealChip, PriceTag, Sheet } from '../components/ui';
+import { Button, DealChip, PriceTag, Sheet } from '../components/ui';
 import { useNav } from '../state/nav';
 
 /** How the app works and how to read its prices, in the order a shopper meets them. */
 export function HelpSheet() {
   const close = useNav((s) => s.close);
   return (
-    <Sheet title="איך זה עובד" onClose={close}>
+    <Sheet
+      title="איך זה עובד"
+      onClose={close}
+      footer={
+        <Button className="w-full" onClick={close}>
+          הבנתי, חזרה
+        </Button>
+      }
+    >
       <ol className="space-y-4">
         <Step n={1} title="בוחרים סניפים">
           אנחנו מציעים סניף אחד מכל רשת מובילה באזור שלך, ואפשר להחליף לסניפים שאתה באמת קונה בהם. רק המחירים

@@ -26,7 +26,9 @@ export type Overlay =
   | { kind: 'stores'; quick?: boolean }
   /** Suggested stores near the shopper, or around a chosen city. */
   | { kind: 'nearby'; city?: string }
-  | { kind: 'help' };
+  | { kind: 'help' }
+  /** "Done shopping?" confirmation. */
+  | { kind: 'finish' };
 
 interface NavState {
   tab: Tab;

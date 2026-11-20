@@ -107,6 +107,7 @@ export function Scanner() {
     };
   }, [lookup]);
 
+  const [added, setAdded] = useState(0);
   const again = () => {
     setResult(null);
     paused.current = false;
@@ -130,10 +131,12 @@ export function Scanner() {
 
       <div className="flex-1 overflow-y-auto px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {result ? (
-          <ScanResult result={result} onAgain={again} />
+          <ScanResult result={result} onAgain={again} onAdded={() => setAdded((n) => n + 1)} />
         ) : (
           <>
-            {cameraError ? null : <p className="text-center text-muted">כוון את המצלמה אל הברקוד שעל האריזה.</p>}
+            {cameraError ? null : (
+              <p className="text-center text-muted">כוון את המצלמה אל הפסים השחורים שעל האריזה. הסריקה קורית לבד.</p>
+            )}
             <form
               className="mt-4 flex gap-2"
               onSubmit={(e) => {
@@ -158,11 +161,19 @@ export function Scanner() {
           </>
         )}
       </div>
+
+      {added > 0 ? (
+        <div className="border-t-[1.5px] border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Button variant="tag" className="w-full" onClick={close}>
+            סיימתי לסרוק ({added === 1 ? 'נוסף מוצר אחד' : `נוספו ${added}`})
+          </Button>
+        </div>
+      ) : null}
     </FullScreen>
   );
 }
 
-function ScanResult({ result, onAgain }: { result: Result; onAgain: () => void }) {
+function ScanResult({ result, onAgain, onAdded }: { result: Result; onAgain: () => void; onAdded: () => void }) {
   const index = useData((s) => s.index);
   const stores = useChosenStores();
   const opts = usePricingOptions();
@@ -206,7 +217,8 @@ function ScanResult({ result, onAgain }: { result: Result; onAgain: () => void }
           className="flex-1"
           onClick={() => {
             useApp.getState().addProduct(product);
-            toast('נוסף לרשימה');
+            toast(`נוסף לרשימה: ${product.name}`);
+            onAdded();
             onAgain();
           }}
         >
