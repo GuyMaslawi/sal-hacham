@@ -13,6 +13,7 @@
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { CHAINS, israelDate, type ChainAdapter, type RemoteFile } from './chains.ts';
 import { mapPool } from './http.ts';
@@ -233,10 +234,18 @@ async function main() {
 
   stores.sort((a, b) => a.city.localeCompare(b.city, 'he') || a.c.localeCompare(b.c) || a.n.localeCompare(b.n, 'he'));
   const present = new Set(stores.map((s) => s.c));
+  // City coordinates let the app suggest stores near the shopper without any server.
+  const coordsPath = fileURLToPath(new URL('../data/city-coords.json', import.meta.url));
+  const allCoords: Record<string, [number, number]> = existsSync(coordsPath)
+    ? JSON.parse(readFileSync(coordsPath, 'utf8'))
+    : {};
+  const cities = new Set(stores.map((s) => s.city));
+  const geo = Object.fromEntries(Object.entries(allCoords).filter(([city]) => cities.has(city)));
   const index = {
     v: DATA_VERSION,
     generatedAt: new Date().toISOString(),
     chains: CHAINS.filter((c) => present.has(c.id)).map((c) => ({ id: c.id, name: c.name })),
+    geo,
     stores,
   };
   writeFileSync(join(args.out, 'index.json'), JSON.stringify(index));

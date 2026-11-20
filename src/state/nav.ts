@@ -17,7 +17,10 @@ export type Overlay =
   | { kind: 'paste' }
   | { kind: 'scan' }
   | { kind: 'item'; itemId: string }
-  | { kind: 'stores' }
+  /** The manual store picker. `quick` sends a chosen city on to the suggestions. */
+  | { kind: 'stores'; quick?: boolean }
+  /** Suggested stores near the shopper, or around a chosen city. */
+  | { kind: 'nearby'; city?: string }
   | { kind: 'help' };
 
 interface NavState {

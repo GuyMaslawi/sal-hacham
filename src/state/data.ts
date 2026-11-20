@@ -95,7 +95,7 @@ export const useData = create<DataState>()((set, get) => {
       );
       const datasets: Record<string, StoreData> = {};
       for (const d of cached) if (d) datasets[d.id] = d;
-      set({ index: cachedIndex ?? null, datasets });
+      set({ index: cachedIndex ? { ...cachedIndex, geo: cachedIndex.geo ?? {} } : null, datasets });
       rebuild();
       set({ ready: true });
       await get().refresh();

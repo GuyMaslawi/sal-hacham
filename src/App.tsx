@@ -1,10 +1,11 @@
-import { ListChecks, LoaderCircle, Scale, ShoppingCart, Store } from 'lucide-react';
+import { ListChecks, LoaderCircle, MapPin, Scale, ShoppingCart, Store } from 'lucide-react';
 import { useEffect } from 'react';
 import { Button, cx, Toaster } from './components/ui';
 import { CompareScreen } from './screens/CompareScreen';
 import { HelpSheet } from './screens/HelpSheet';
 import { ItemSheet } from './screens/ItemSheet';
 import { ListScreen } from './screens/ListScreen';
+import { NearbyScreen } from './screens/NearbyScreen';
 import { PasteSheet } from './screens/PasteSheet';
 import { Scanner } from './screens/Scanner';
 import { SearchScreen } from './screens/SearchScreen';
@@ -79,7 +80,9 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
     case 'item':
       return <ItemSheet itemId={overlay.itemId} />;
     case 'stores':
-      return <StorePicker />;
+      return <StorePicker quick={overlay.quick} />;
+    case 'nearby':
+      return <NearbyScreen key={overlay.city ?? 'here'} city={overlay.city} />;
     case 'help':
       return <HelpSheet />;
   }
@@ -185,7 +188,7 @@ function Welcome() {
       <div className="flex flex-1 flex-col px-6 pt-7 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <ol className="space-y-3.5">
           {[
-            ['בוחרים סניפים', 'שניים עד ארבעה שנוח לך להגיע אליהם.'],
+            ['בוחרים סניפים', 'אנחנו מציעים את הרשתות המובילות באזור שלך.'],
             ['בונים רשימה', 'חיפוש, סריקת ברקוד, או הדבקה מוואטסאפ.'],
             ['רואים איפה הכי זול', 'מחיר הסל כולו בכל סניף, לפי המחירים של היום.'],
           ].map(([title, text], i) => (
@@ -212,12 +215,19 @@ function Welcome() {
           <p className="mt-4 text-muted">טוען את רשימת הסניפים.</p>
         )}
         <div className="mt-auto pt-6">
-          <Button className="w-full" disabled={!index} onClick={() => open({ kind: 'stores' })}>
-            בחר סניפים
+          <Button className="w-full" disabled={!index} onClick={() => open({ kind: 'nearby' })}>
+            <MapPin className="size-5" />
+            מצא סופרים לידי
           </Button>
-          <Button variant="quiet" className="mt-1 w-full" onClick={() => open({ kind: 'help' })}>
-            איך זה עובד?
-          </Button>
+          <p className="mt-1.5 text-center text-sm text-muted">המיקום נשאר בטלפון שלך ולא נשלח לאף אחד.</p>
+          <div className="mt-2 flex gap-2">
+            <Button variant="outline" className="flex-1" disabled={!index} onClick={() => open({ kind: 'stores', quick: true })}>
+              בחר עיר
+            </Button>
+            <Button variant="quiet" className="flex-1" onClick={() => open({ kind: 'help' })}>
+              איך זה עובד?
+            </Button>
+          </div>
         </div>
       </div>
     </div>

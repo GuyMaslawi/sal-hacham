@@ -1,4 +1,4 @@
-import { ArrowRight, Check, CircleHelp, LoaderCircle, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { ArrowRight, Check, CircleHelp, LoaderCircle, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { InstallHint } from '../components/InstallHint';
 import { Button, cx, EmptyState, FullScreen, IconButton, Stepper, toast, Toggle } from '../components/ui';
@@ -89,7 +89,12 @@ export function StoresScreen() {
       </div>
       {stores.length >= MAX_STORES ? (
         <p className="mx-6 mt-2 text-sm text-muted">אפשר להשוות עד {MAX_STORES} סניפים. הסר אחד כדי להוסיף אחר.</p>
-      ) : null}
+      ) : (
+        <Button variant="quiet" className="mx-4 mt-1 w-[calc(100%-2rem)]" onClick={() => open({ kind: 'nearby' })}>
+          <MapPin className="size-5" />
+          הצע לי סופרים באזור שלי
+        </Button>
+      )}
 
       <section className="mx-4 mt-6 rounded-2xl bg-surface">
         <div className="perforated">
@@ -137,8 +142,9 @@ export function StoresScreen() {
 const NO_CITY = 'אחר';
 
 /** Pick stores: choose a city, then tap the branches you actually shop at. */
-export function StorePicker() {
+export function StorePicker({ quick = false }: { quick?: boolean }) {
   const close = useNav((s) => s.close);
+  const open = useNav((s) => s.open);
   const index = useData((s) => s.index);
   const indexError = useData((s) => s.indexError);
   const chosen = useApp((s) => s.storeIds);
@@ -237,8 +243,9 @@ export function StorePicker() {
             <>
               {!q && chosen.length === 0 ? (
                 <p className="px-5 py-3 text-sm text-muted">
-                  בחר עיר, ואז שניים עד ארבעה סניפים שנוח לך להגיע אליהם. אפשר גם לחפש רשת או סניף בשם, ולשנות את
-                  הבחירה בכל רגע.
+                  {quick
+                    ? 'בחר את העיר שלך, ונציע לך את הסופרים המובילים בה ובסביבתה. אפשר גם לחפש רשת או סניף בשם.'
+                    : 'בחר עיר, ואז שניים עד ארבעה סניפים שנוח לך להגיע אליהם. אפשר גם לחפש רשת או סניף בשם, ולשנות את הבחירה בכל רגע.'}
                 </p>
               ) : null}
               {cityMatches.length > 0 ? (
@@ -249,6 +256,11 @@ export function StorePicker() {
                         type="button"
                         className="flex min-h-14 w-full items-center justify-between gap-3 px-5 text-start active:bg-sunken"
                         onClick={() => {
+                          // First run: go straight to the leading chains around this city.
+                          if (quick && c.name !== NO_CITY && index.geo[c.name]) {
+                            open({ kind: 'nearby', city: c.name });
+                            return;
+                          }
                           setCity(c.name);
                           setQuery('');
                         }}

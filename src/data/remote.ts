@@ -13,6 +13,7 @@ interface RawIndex {
   generatedAt: string;
   chains: Array<{ id: string; name: string }>;
   stores: Array<{ id: string; c: string; n: string; sub: string; city: string; a: string; u: string; k: number; f: string; z: number }>;
+  geo?: Record<string, [number, number]>;
 }
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -35,6 +36,7 @@ export async function fetchIndex(): Promise<DataIndex> {
   return {
     generatedAt: raw.generatedAt,
     chains: raw.chains,
+    geo: raw.geo ?? {},
     stores: raw.stores.map((s) => ({
       id: s.id,
       chainId: s.c,

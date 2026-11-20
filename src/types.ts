@@ -24,6 +24,8 @@ export interface DataIndex {
   generatedAt: string;
   chains: ChainInfo[];
   stores: StoreInfo[];
+  /** City name → [latitude, longitude], for finding stores near the shopper. */
+  geo: Record<string, [number, number]>;
 }
 
 /** "Buy `minQty` for a total of `price`". */
