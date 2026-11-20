@@ -24,19 +24,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - run: npm test
-      # If too few stores come back (a portal is down or blocks the runner), the job fails
-      # here and yesterday's site stays online.
-      - run: npm run sync -- --min-stores 400
+      # A few chains refuse connections from servers outside Israel. Their prices are fetched on
+      # a computer in Israel (npm run deploy:israel) and kept on the "local-data" branch.
+      - name: Prices fetched from Israel
+        uses: actions/checkout@v5
+        with:
+          ref: local-data
+          path: local-data
+        continue-on-error: true
+      # If too few stores come back, the job fails here and yesterday's site stays online.
+      - run: npm run sync -- --min-stores 400 --fallback local-data/data
+      - run: rm -rf local-data
       - run: npm run build
       - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
 

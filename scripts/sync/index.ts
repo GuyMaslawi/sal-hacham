@@ -6,8 +6,12 @@
 //
 // Usage: npm run sync -- [--chains shufersal,carrefour] [--cities "חיפה,נשר"] [--limit 5]
 //                        [--out public/data] [--concurrency 6] [--min-stores 400]
+//                        [--fallback <dir>]
+//
+// --fallback points at an earlier output folder. Chains that produce nothing in this run (their
+// portal is down, or it refuses connections from outside Israel) are filled in from there.
 
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { CHAINS, israelDate, type ChainAdapter, type RemoteFile } from './chains.ts';
@@ -27,6 +31,7 @@ interface Args {
   concurrency: number;
   /** Fail (and so skip the deploy) when fewer stores than this were produced. */
   minStores: number;
+  fallback: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -42,6 +47,7 @@ function parseArgs(argv: string[]): Args {
     out: get('out') ?? 'public/data',
     concurrency: Number(get('concurrency') ?? 6),
     minStores: Number(get('min-stores') ?? 1),
+    fallback: get('fallback') ?? null,
   };
 }
 
@@ -169,6 +175,27 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
   return entries;
 }
 
+/** Fill in chains that produced nothing this run from an earlier output folder. */
+function carryOver(args: Args, stores: StoreEntry[]): { stores: number; chains: string[] } {
+  const indexPath = args.fallback ? join(args.fallback, 'index.json') : '';
+  if (!args.fallback || !existsSync(indexPath)) return { stores: 0, chains: [] };
+  const previous = JSON.parse(readFileSync(indexPath, 'utf8')) as { stores: StoreEntry[] };
+  const produced = new Set(stores.map((s) => s.c));
+  const wanted = args.chains ? new Set(args.chains) : null;
+  const chains = new Set<string>();
+  let count = 0;
+  for (const entry of previous.stores) {
+    if (produced.has(entry.c) || (wanted && !wanted.has(entry.c))) continue;
+    const source = join(args.fallback, entry.f);
+    if (!existsSync(source)) continue;
+    copyFileSync(source, join(args.out, entry.f));
+    stores.push(entry);
+    chains.add(entry.c);
+    count++;
+  }
+  return { stores: count, chains: [...chains] };
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const today = israelDate().iso;
@@ -192,6 +219,11 @@ async function main() {
     }
   });
 
+  const carried = carryOver(args, stores);
+  if (carried.stores) {
+    console.log(`  carried over ${carried.stores} stores from ${args.fallback} for: ${carried.chains.join(', ')}`);
+  }
+
   if (stores.length < args.minStores) {
     throw new Error(
       `Only ${stores.length} stores were produced (expected at least ${args.minStores}). ` +
@@ -213,7 +245,8 @@ async function main() {
   console.log(
     `Done in ${Math.round((Date.now() - started) / 1000)}s: ${stores.length} stores, ` +
       `${new Set(stores.map((s) => s.city)).size} cities, ${totalMb.toFixed(1)} MB compressed.` +
-      (failedChains.length ? ` Chains that failed: ${failedChains.join(', ')}.` : ''),
+      (failedChains.length ? ` Chains that failed: ${failedChains.join(', ')}.` : '') +
+      (carried.stores ? ` Carried over: ${carried.chains.join(', ')}.` : ''),
   );
 }
 

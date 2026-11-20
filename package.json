@@ -10,7 +10,7 @@
     "test": "vitest run",
     "sync": "tsx scripts/sync/index.ts",
     "icons": "node scripts/make-icons.mjs",
-    "deploy:local": "npm run sync -- --min-stores 400 && npm run build && gh-pages -d dist --no-history --nojekyll -m \"Update prices\""
+    "deploy:israel": "tsx scripts/sync/israel-only.ts"
   },
   "dependencies": {
     "@fontsource-variable/heebo": "^5.3.0",

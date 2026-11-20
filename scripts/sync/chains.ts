@@ -313,12 +313,139 @@ function publishedPricesChain(id: string, name: string, publicUser: string): Cha
   };
 }
 
+// ---- Laib catalog API (Victory, Mahsanei HaShuk, H. Cohen) ---------------------------------
+
+const LAIB = 'https://laibcatalog.co.il/webapi';
+
+function laibChain(id: string, name: string, chainCode: string): ChainAdapter {
+  return {
+    id,
+    name,
+    async list() {
+      const rows = JSON.parse(await getText(`${LAIB}/api/getfiles?edi=${chainCode}`)) as Array<{ fileName: string }>;
+      return rows
+        .map((r) => describeFile(r.fileName, `${LAIB}/${chainCode}/${encodeURIComponent(r.fileName)}`))
+        .filter((f): f is RemoteFile => f !== null);
+    },
+    download: plainDownload,
+  };
+}
+
+// ---- Super-Pharm --------------------------------------------------------------------------
+
+const SUPER_PHARM = 'https://prices.super-pharm.co.il';
+
+const superPharm: ChainAdapter = {
+  id: 'superpharm',
+  name: 'סופר-פארם',
+  async list() {
+    const out = new Map<string, RemoteFile>();
+    const collect = async (category: string, date: string) => {
+      const before = out.size;
+      for (let page = 1; page <= 80; page++) {
+        const query = new URLSearchParams({ 'Category-equals': category, page: String(page) });
+        if (date) query.set('Date-equals', date);
+        const html = await getText(`${SUPER_PHARM}/?${query}`);
+        let fresh = 0;
+        for (const m of html.matchAll(/href="(\/Download\/([^"?]+)\?[^"]*)"/g)) {
+          if (out.has(m[2])) continue;
+          const f = describeFile(m[2], SUPER_PHARM + decodeEntities(m[1]));
+          if (f) {
+            out.set(m[2], f);
+            fresh++;
+          }
+        }
+        if (!fresh) break;
+      }
+      return out.size - before;
+    };
+    await collect('Stores', '');
+    const today = israelDate().dmy;
+    // Before the morning files are out, fall back to the most recent ones on the site.
+    if (!(await collect('PriceFull', today))) await collect('PriceFull', '');
+    if (!(await collect('PromoFull', today))) await collect('PromoFull', '');
+    return [...out.values()];
+  },
+  download: plainDownload,
+};
+
+// ---- Netiv HaHesed (also Barkol and Shira Market) -----------------------------------------
+
+const NETIV = 'https://app.netiv-hesed.com';
+
+const netivHahesed: ChainAdapter = {
+  id: 'netivhahesed',
+  name: 'נתיב החסד',
+  async list() {
+    const out = new Map<string, RemoteFile>();
+    for (const type of ['Stores', 'PriceFull', 'PromoFull']) {
+      const html = await getText(`${NETIV}/?FileType=${type}`);
+      for (const m of html.matchAll(/href="(\/Prices\/Download\?fileName=([^"&]+)[^"]*)"/g)) {
+        const name = decodeURIComponent(m[2]);
+        const f = describeFile(name, NETIV + decodeEntities(m[1]));
+        if (f) out.set(name, f);
+      }
+    }
+    return [...out.values()];
+  },
+  download: plainDownload,
+};
+
+// ---- City Market franchise stores ---------------------------------------------------------
+
+const CITY_MARKET = 'https://www.citymarket-shops.co.il';
+
+const cityMarketShops: ChainAdapter = {
+  id: 'citymarketshops',
+  name: 'סיטי מרקט',
+  mergeAllPriceFiles: true,
+  async list() {
+    const out = new Map<string, RemoteFile>();
+    for (let page = 1; page <= 80; page++) {
+      const html = await getText(`${CITY_MARKET}/?p=${page}&s=&f=&t=&d=`);
+      let found = 0;
+      for (const [, row] of html.matchAll(/<tr>([\s\S]*?)<\/tr>/g)) {
+        const name = /((?:Price|Promo|Stores)[A-Za-z]*\d[\w-]*\.(?:gz|xml|zip))/i.exec(row)?.[1];
+        const href = /href="(\/downloadFile\/[^"]+)"/.exec(row)?.[1];
+        if (!name || !href) continue;
+        found++;
+        const f = describeFile(name, CITY_MARKET + href);
+        if (f) out.set(name, f);
+      }
+      if (!found) break;
+    }
+    return [...out.values()];
+  },
+  download: plainDownload,
+};
+
+// ---- Mishnat Yosef (KT) -------------------------------------------------------------------
+
+const mishnatYosef: ChainAdapter = {
+  id: 'mishnatyosef',
+  name: 'משנת יוסף',
+  async list() {
+    const text = await getText('https://list-files.w5871031-kt.workers.dev/');
+    const rows = JSON.parse(text) as Array<{ name: string; url: string }>;
+    return rows
+      // Only follow links to the storage bucket the chain's own page uses.
+      .filter((r) => /^https:\/\/[\w.-]+\.backblazeb2\.com\//.test(r.url))
+      .map((r) => describeFile(r.name, r.url))
+      .filter((f): f is RemoteFile => f !== null);
+  },
+  download: plainDownload,
+};
+
+// The official list of chains and where each publishes is kept by the Consumer Protection
+// Authority: https://www.gov.il/he/pages/cpfta_prices_regulations
 export const CHAINS: ChainAdapter[] = [
   shufersal,
   publishedPricesChain('ramilevy', 'רמי לוי', 'RamiLevi'),
   publishedPricesChain('yohananof', 'יוחננוף', 'yohananof'),
+  laibChain('victory', 'ויקטורי', '7290696200003'),
   publishedPricesChain('osherad', 'אושר עד', 'osherad'),
   carrefour,
+  laibChain('mahsaneihashuk', 'מחסני השוק', '7290661400001'),
   haziHinam,
   publishedPricesChain('tivtaam', 'טיב טעם', 'TivTaam'),
   publishedPricesChain('keshet', 'קשת טעמים', 'Keshet'),
@@ -334,4 +461,11 @@ export const CHAINS: ChainAdapter[] = [
   binaChain('supersapir', 'סופר ספיר', 'supersapir'),
   binaChain('citymarket', 'סיטי מרקט', 'citymarketkiryatgat'),
   binaChain('ktshivuk', 'משנת יוסף', 'ktshivuk'),
+  mishnatYosef,
+  netivHahesed,
+  laibChain('hcohen', 'ח. כהן', '7290455000004'),
+  binaChain('bareket', 'סופר ברקת', 'superbareket'),
+  cityMarketShops,
+  superPharm,
+  binaChain('goodpharm', 'גוד פארם', 'goodpharm'),
 ];
