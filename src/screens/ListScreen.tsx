@@ -2,9 +2,10 @@ import { ChevronLeft, ClipboardList, ScanBarcode, Search, Share2, Trash2 } from 
 import { useMemo } from 'react';
 import { InstallHint } from '../components/InstallHint';
 import { Button, DealChip, IconButton, Price, PriceTag, QtyBadge, Stepper } from '../components/ui';
+import { searchProducts } from '../data/catalog';
 import { changeQty, clearListWithUndo, shareList } from '../lib/actions';
-import { promoLabel } from '../lib/pricing';
-import { qtyUnit, storeTitle, useComparison, useStoreLookup } from '../lib/view';
+import { costFor, promoLabel } from '../lib/pricing';
+import { qtyUnit, storeTitle, useComparison, usePricingOptions, useStoreLookup } from '../lib/view';
 import { stepFor, useApp } from '../state/app';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
@@ -81,9 +82,13 @@ export function ListScreen() {
         <>
           <BestStoreBanner />
           <ul className="perforated mx-4 mt-3 rounded-2xl bg-surface">
-            {items.map((item) => (
-              <ListRow key={item.id} item={item} prices={prices.get(item.id)} />
-            ))}
+            {items.map((item) =>
+              item.pids.length === 0 ? (
+                <UnmatchedRow key={item.id} item={item} />
+              ) : (
+                <ListRow key={item.id} item={item} prices={prices.get(item.id)} />
+              ),
+            )}
           </ul>
 
           <div className="mx-4 mt-2 flex">
@@ -192,25 +197,72 @@ function BestStoreBanner() {
   );
 }
 
+/**
+ * A line typed or pasted as free text. It cannot be priced until it points at a product, so the
+ * row offers the likeliest one: a single tap confirms it.
+ */
+function UnmatchedRow({ item }: { item: ListItem }) {
+  const open = useNav((s) => s.open);
+  const catalog = useData((s) => s.catalog);
+  const opts = usePricingOptions();
+  const guess = useMemo(() => searchProducts(catalog, item.label, { limit: 1 })[0], [catalog, item.label]);
+  const guessPrice = useMemo(
+    () => (guess ? Math.min(...[...guess.offers.values()].map((o) => costFor(o, 1, guess.weighted, opts).total)) : 0),
+    [guess, opts],
+  );
+  const choose = () => open({ kind: 'search', mode: { kind: 'match', itemId: item.id, query: item.label } });
+
+  return (
+    <li className="py-3 ps-4 pe-3">
+      <button type="button" className="block w-full text-start" onClick={() => open({ kind: 'item', itemId: item.id })}>
+        <span className="line-clamp-2 leading-snug font-medium">
+          <QtyBadge qty={item.qty} />
+          {item.label}
+        </span>
+        <span className="mt-0.5 block text-sm text-alert">
+          {guess ? 'כדי לקבל מחיר, אשר לאיזה מוצר התכוונת' : 'כדי לקבל מחיר צריך לבחור מוצר מסוים'}
+        </span>
+      </button>
+      {guess ? (
+        <div className="mt-2 rounded-xl bg-sunken p-3">
+          <p className="line-clamp-2 text-sm leading-snug">
+            {guess.name} <Price value={guessPrice} className="text-ink" />
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              variant="tag"
+              className="min-h-10 flex-1 rounded-full px-3 text-sm"
+              onClick={() => useApp.getState().attachProduct(item.id, guess, true)}
+            >
+              כן, זה המוצר
+            </Button>
+            <Button variant="outline" className="min-h-10 flex-1 rounded-full px-3 text-sm" onClick={choose}>
+              מוצר אחר
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button variant="tag" className="mt-2 min-h-10 rounded-full px-4 text-sm" onClick={choose}>
+          בחר מוצר
+        </Button>
+      )}
+    </li>
+  );
+}
+
 function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefined }) {
   const open = useNav((s) => s.open);
   const product = useData((s) => (item.pids[0] ? s.catalog.products.get(item.pids[0]) : undefined));
   const storeCount = useData((s) => s.catalog.storeIds.length);
   const weighted = product?.weighted ?? false;
-  const unmatched = item.pids.length === 0;
   const priced = prices && Number.isFinite(prices.min);
 
   return (
     <li className="flex items-center gap-3 py-3 ps-4 pe-3">
       <button type="button" className="min-w-0 flex-1 text-start" onClick={() => open({ kind: 'item', itemId: item.id })}>
-        <span className="line-clamp-2 leading-snug font-medium">
-          {unmatched ? <QtyBadge qty={item.qty} /> : null}
-          {item.label}
-        </span>
+        <span className="line-clamp-2 leading-snug font-medium">{item.label}</span>
         <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          {unmatched ? (
-            <span className="text-alert">עוד לא נבחר מוצר</span>
-          ) : priced ? (
+          {priced ? (
             <>
               <span className="text-muted">
                 <Price value={prices.min} className="text-ink" />
@@ -233,22 +285,12 @@ function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefin
           )}
         </span>
       </button>
-      {unmatched ? (
-        <Button
-          variant="tag"
-          className="min-h-10 shrink-0 rounded-full px-4 text-sm"
-          onClick={() => open({ kind: 'search', mode: { kind: 'match', itemId: item.id, query: item.label } })}
-        >
-          בחר מוצר
-        </Button>
-      ) : (
-        <Stepper
-          value={item.qty}
-          step={stepFor(weighted)}
-          unit={qtyUnit(weighted)}
-          onChange={(q) => changeQty(item.id, q)}
-        />
-      )}
+      <Stepper
+        value={item.qty}
+        step={stepFor(weighted)}
+        unit={qtyUnit(weighted)}
+        onChange={(q) => changeQty(item.id, q)}
+      />
     </li>
   );
 }
