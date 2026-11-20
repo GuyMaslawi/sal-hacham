@@ -75,12 +75,14 @@ export function NearbyScreen({ city }: { city?: string }) {
   const chosenStore = (s: Suggestion) => swapped[s.store.chainId] ?? s.store;
   const isTicked = (s: Suggestion) =>
     unticked ? !unticked.has(s.store.chainId) : s.preselected;
-  const toggle = (s: Suggestion) => {
-    const next = new Set(unticked ?? suggestions.filter((x) => !x.preselected).map((x) => x.store.chainId));
-    if (next.has(s.store.chainId)) next.delete(s.store.chainId);
-    else next.add(s.store.chainId);
-    setUnticked(next);
-  };
+  const toggle = (s: Suggestion) =>
+    // Built from the latest state, so two quick taps on different rows both count.
+    setUnticked((prev) => {
+      const next = new Set(prev ?? suggestions.filter((x) => !x.preselected).map((x) => x.store.chainId));
+      if (next.has(s.store.chainId)) next.delete(s.store.chainId);
+      else next.add(s.store.chainId);
+      return next;
+    });
 
   const picked = suggestions.filter(isTicked).map(chosenStore).filter((s) => !alreadyChosen.includes(s.id));
   const room = MAX_STORES - alreadyChosen.length;
