@@ -6,17 +6,19 @@
 //
 // Usage: npm run sync -- [--chains shufersal,carrefour] [--cities "חיפה,נשר"] [--limit 5]
 //                        [--out public/data] [--concurrency 6] [--min-stores 400]
-//                        [--fallback <dir>]
+//                        [--fallback <dir>] [--previous-url <url>]
 //
-// --fallback points at an earlier output folder. Chains that produce nothing in this run (their
-// portal is down, or it refuses connections from outside Israel) are filled in from there.
+// Stores this run could not produce (a portal is down, refuses connections from outside Israel,
+// or has not published yet today) are kept from an earlier run while they are recent enough:
+// first from --fallback, an earlier output folder, then from --previous-url, the published site.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { CHAINS, israelDate, type ChainAdapter, type RemoteFile } from './chains.ts';
-import { mapPool } from './http.ts';
+import { selectCarryOver } from './carry.ts';
+import { mapPool, request } from './http.ts';
 import { resolveCity, UNKNOWN_CITY } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type PriceItem, type RawStore } from './parse.ts';
 import { decodeFile } from './xml.ts';
@@ -33,6 +35,7 @@ interface Args {
   /** Fail (and so skip the deploy) when fewer stores than this were produced. */
   minStores: number;
   fallback: string | null;
+  previousUrl: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -49,6 +52,7 @@ function parseArgs(argv: string[]): Args {
     concurrency: Number(get('concurrency') ?? 6),
     minStores: Number(get('min-stores') ?? 1),
     fallback: get('fallback') ?? null,
+    previousUrl: get('previous-url') ?? null,
   };
 }
 
@@ -176,25 +180,49 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
   return entries;
 }
 
-/** Fill in chains that produced nothing this run from an earlier output folder. */
-function carryOver(args: Args, stores: StoreEntry[]): { stores: number; chains: string[] } {
+/** Keep recent stores from an earlier output folder that this run did not produce. */
+function carryOverFromFolder(args: Args, stores: StoreEntry[], today: string): number {
   const indexPath = args.fallback ? join(args.fallback, 'index.json') : '';
-  if (!args.fallback || !existsSync(indexPath)) return { stores: 0, chains: [] };
+  if (!args.fallback || !existsSync(indexPath)) return 0;
   const previous = JSON.parse(readFileSync(indexPath, 'utf8')) as { stores: StoreEntry[] };
-  const produced = new Set(stores.map((s) => s.c));
   const wanted = args.chains ? new Set(args.chains) : null;
-  const chains = new Set<string>();
   let count = 0;
-  for (const entry of previous.stores) {
-    if (produced.has(entry.c) || (wanted && !wanted.has(entry.c))) continue;
+  for (const entry of selectCarryOver(previous.stores, new Set(stores.map((s) => s.id)), today)) {
+    if (wanted && !wanted.has(entry.c)) continue;
     const source = join(args.fallback, entry.f);
     if (!existsSync(source)) continue;
     copyFileSync(source, join(args.out, entry.f));
     stores.push(entry);
-    chains.add(entry.c);
     count++;
   }
-  return { stores: count, chains: [...chains] };
+  return count;
+}
+
+/** The same, from the data set that is currently published on the web. */
+async function carryOverFromSite(args: Args, stores: StoreEntry[], today: string): Promise<number> {
+  if (!args.previousUrl) return 0;
+  const base = args.previousUrl.replace(/\/?$/, '/');
+  let previous: { stores: StoreEntry[] };
+  try {
+    previous = JSON.parse((await request(`${base}index.json`, { retries: 1 })).toString('utf8'));
+  } catch {
+    return 0; // First deploy, or the site is unreachable: nothing to carry.
+  }
+  const wanted = args.chains ? new Set(args.chains) : null;
+  const missing = selectCarryOver(previous.stores, new Set(stores.map((s) => s.id)), today).filter(
+    (e) => !wanted || wanted.has(e.c),
+  );
+  const results = await mapPool(missing, 8, async (entry) => {
+    writeFileSync(join(args.out, entry.f), await request(`${base}${entry.f}`));
+    return entry;
+  });
+  let count = 0;
+  for (const r of results) {
+    if (!r.ok) continue;
+    stores.push(r.value);
+    count++;
+  }
+  return count;
 }
 
 async function main() {
@@ -220,10 +248,11 @@ async function main() {
     }
   });
 
-  const carried = carryOver(args, stores);
-  if (carried.stores) {
-    console.log(`  carried over ${carried.stores} stores from ${args.fallback} for: ${carried.chains.join(', ')}`);
-  }
+  const fresh = stores.length;
+  const fromFolder = carryOverFromFolder(args, stores, today);
+  const fromSite = await carryOverFromSite(args, stores, today);
+  if (fromFolder) console.log(`  kept ${fromFolder} stores from ${args.fallback}`);
+  if (fromSite) console.log(`  kept ${fromSite} stores from the published site`);
 
   if (stores.length < args.minStores) {
     throw new Error(
@@ -254,8 +283,8 @@ async function main() {
   console.log(
     `Done in ${Math.round((Date.now() - started) / 1000)}s: ${stores.length} stores, ` +
       `${new Set(stores.map((s) => s.city)).size} cities, ${totalMb.toFixed(1)} MB compressed.` +
-      (failedChains.length ? ` Chains that failed: ${failedChains.join(', ')}.` : '') +
-      (carried.stores ? ` Carried over: ${carried.chains.join(', ')}.` : ''),
+      ` Fresh: ${fresh}, kept from earlier runs: ${fromFolder + fromSite}.` +
+      (failedChains.length ? ` Chains that failed: ${failedChains.join(', ')}.` : ''),
   );
 }
 

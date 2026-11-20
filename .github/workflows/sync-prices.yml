@@ -44,8 +44,12 @@ jobs:
           else
             echo "No Israel-side data has been uploaded yet."
           fi
-      # If too few stores come back, the job fails here and yesterday's site stays online.
-      - run: npm run sync -- --min-stores 400 --fallback local-data/data
+      # Stores that did not come back this time keep their last prices: from the Israel-side
+      # file first, then from the site as it is published now. If too few stores come back in
+      # total, the job fails here and the current site stays online.
+      - run: >-
+          npm run sync -- --min-stores 400 --fallback local-data/data
+          --previous-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/"
       - run: rm -rf local-data
       - run: npm run build
       - uses: actions/configure-pages@v5

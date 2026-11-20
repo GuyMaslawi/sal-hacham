@@ -1,5 +1,6 @@
 import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
+import { selectCarryOver } from './carry.ts';
 import { describeFile } from './chains.ts';
 import { normalizeCode, normalizeQuantity, quantityFromName, resolveCity } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos } from './parse.ts';
@@ -186,5 +187,25 @@ describe('pickPromos', () => {
 
   it('ignores a club price that does not beat the public one', () => {
     expect(pickPromos(base, [deal(1, 7), deal(1, 8, true)])).toEqual([deal(1, 7)]);
+  });
+});
+
+describe('selectCarryOver', () => {
+  const entry = (id: string, u: string) => ({ id, u });
+
+  it('keeps recent stores this run did not produce', () => {
+    const previous = [entry('a-1', '2026-11-20T04:00'), entry('a-2', '2026-11-19T04:00'), entry('b-1', '2026-11-20T05:00')];
+    const kept = selectCarryOver(previous, new Set(['a-1']), '2026-11-21');
+    expect(kept.map((e) => e.id)).toEqual(['a-2', 'b-1']);
+  });
+
+  it('lets stores with old prices go', () => {
+    const previous = [entry('fresh', '2026-11-10T04:00'), entry('stale', '2026-11-01T04:00'), entry('undated', '')];
+    expect(selectCarryOver(previous, new Set(), '2026-11-21').map((e) => e.id)).toEqual(['fresh']);
+  });
+
+  it('never returns the same store twice', () => {
+    const previous = [entry('a-1', '2026-11-20T04:00'), entry('a-1', '2026-11-20T04:00')];
+    expect(selectCarryOver(previous, new Set(), '2026-11-21')).toHaveLength(1);
   });
 });

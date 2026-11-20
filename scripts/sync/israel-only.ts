@@ -12,6 +12,7 @@
 //   npm run deploy:israel -- --no-rebuild                 upload only, do not trigger a rebuild
 
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync } from 'node:fs';
 import { CHAINS } from './chains.ts';
 
 const RELEASE = 'local-data';
@@ -62,7 +63,24 @@ async function chainsToFetch(): Promise<string[]> {
 
 const chains = await chainsToFetch();
 console.log(`Fetching from this computer: ${chains.join(', ')}`);
-run('npx', ['tsx', 'scripts/sync/index.ts', '--chains', chains.join(','), '--out', '.local-data/data']);
+
+// Start from what was uploaded last time, so a run at an hour when a chain has not published
+// yet keeps that chain's previous prices instead of dropping it.
+rmSync('.local-data/prev', { recursive: true, force: true });
+mkdirSync('.local-data/prev', { recursive: true });
+try {
+  read('gh', ['release', 'download', RELEASE, '--repo', repo, '--pattern', 'local-data.tar', '--dir', '.local-data/prev']);
+  run('tar', ['-xf', '.local-data/prev/local-data.tar', '-C', '.local-data/prev']);
+} catch {
+  console.log('No earlier upload to build on.');
+}
+run('npx', [
+  'tsx', 'scripts/sync/index.ts',
+  '--chains', chains.join(','),
+  '--out', '.local-data/data',
+  '--fallback', '.local-data/prev/data',
+]);
+rmSync('.local-data/prev', { recursive: true, force: true });
 
 // The store files are already compressed, so a plain tar is enough.
 run('tar', ['-cf', ARCHIVE, '-C', '.local-data', 'data']);
