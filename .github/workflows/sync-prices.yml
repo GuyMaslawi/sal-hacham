@@ -1,0 +1,51 @@
+# Every morning: download the chains' price files, rebuild the app with the fresh data and
+# publish it to GitHub Pages. Free on a public repository.
+name: Sync prices and deploy
+
+on:
+  schedule:
+    # 04:30 UTC is 06:30 or 07:30 in Israel, after the chains publish their nightly files.
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # If too few stores come back (a portal is down or blocks the runner), the job fails
+      # here and yesterday's site stays online.
+      - run: npm run sync -- --min-stores 400
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,199 @@
+import { describe, expect, it } from 'vitest';
+import { buildCatalog, findByBarcode, searchProducts, suggestSubstitutes } from '../data/catalog';
+import { costFor, nextDeal, unitPrice } from '../lib/pricing';
+import { parseShoppingList } from '../lib/text';
+import type { ListItem, StoreData, StoreInfo, StoreRow } from '../types';
+import { compareBasket } from './optimizer';
+
+const OPTS = { includeClub: false, today: '2026-11-20' };
+
+const store = (id: string, chainId: string): StoreInfo => ({
+  id,
+  chainId,
+  name: id,
+  sub: '',
+  city: 'חיפה',
+  address: '',
+  updatedAt: '2026-11-20T04:00',
+  itemCount: 0,
+  file: '',
+  size: 0,
+});
+
+const MILK = '7290000042442';
+const COTTAGE = '7290004127329';
+const RICE = '7290000111111';
+const COFFEE = '7290000222222';
+
+const data = (id: string, items: StoreRow[]): StoreData => ({ id, u: '2026-11-20T04:00', items });
+
+const stores = [store('a-1', 'a'), store('b-1', 'b'), store('c-1', 'c')];
+const catalog = buildCatalog(
+  [
+    data('a-1', [
+      [MILK, 'חלב 3% בקרטון 1 ליטר', 'תנובה', 7.2, 1000, 'ml', 0],
+      [COTTAGE, "קוטג' 5% 250 גרם", 'תנובה', 6.6, 250, 'g', 0, [[2, 10, 0, '2026-11-28', '2 ב-10']]],
+      [RICE, 'אורז פרסי 1 ק"ג', 'סוגת', 12, 1000, 'g', 0],
+      [COFFEE, 'קפה נמס 200 גרם', 'עלית', 30, 200, 'g', 0, [[1, 22, 1, '2026-11-28', 'מחיר מועדון']]],
+      ['1502', 'מלפפון', '', 6.9, 1000, 'g', 1],
+    ]),
+    data('b-1', [
+      [MILK, 'חלב 3% 1 ליטר', '', 6.9, 1000, 'ml', 0],
+      [COTTAGE, "קוטג' 5%", '', 6.1, 250, 'g', 0],
+      [RICE, 'אורז פרסי 1 ק"ג', 'סוגת', 15, 1000, 'g', 0],
+      [COFFEE, 'קפה נמס 200 גרם', 'עלית', 21, 200, 'g', 0],
+      ['88', 'מלפפון טרי', '', 5.9, 1000, 'g', 1],
+    ]),
+    data('c-1', [
+      [MILK, 'חלב 3% 1 ליטר', '', 7.5, 1000, 'ml', 0],
+      [RICE, 'אורז פרסי 1 ק"ג', 'סוגת', 9, 1000, 'g', 0, [[1, 8, 0, '2026-11-01', 'מבצע שפג']]],
+    ]),
+  ],
+  stores,
+);
+
+const item = (id: string, pids: string[], qty = 1): ListItem => ({ id, label: id, qty, pids, checked: false, addedAt: 0 });
+const ids = stores.map((s) => s.id);
+
+describe('pricing', () => {
+  const cottageA = catalog.products.get(COTTAGE)!.offers.get('a-1')!;
+
+  it('applies a multi-buy deal only to full bundles', () => {
+    expect(costFor(cottageA, 1, false, OPTS)).toMatchObject({ total: 6.6, promo: null });
+    expect(costFor(cottageA, 2, false, OPTS).total).toBe(10);
+    expect(costFor(cottageA, 3, false, OPTS).total).toBe(16.6);
+    expect(costFor(cottageA, 4, false, OPTS).total).toBe(20);
+  });
+
+  it('points at a deal that one more unit would unlock', () => {
+    expect(nextDeal(cottageA, 1, OPTS)?.minQty).toBe(2);
+    expect(nextDeal(cottageA, 2, OPTS)).toBeNull();
+  });
+
+  it('counts club prices only when asked to', () => {
+    const coffeeA = catalog.products.get(COFFEE)!.offers.get('a-1')!;
+    expect(costFor(coffeeA, 1, false, OPTS).total).toBe(30);
+    expect(costFor(coffeeA, 1, false, { ...OPTS, includeClub: true }).total).toBe(22);
+  });
+
+  it('ignores deals that expired after the data was fetched', () => {
+    const riceC = catalog.products.get(RICE)!.offers.get('c-1')!;
+    expect(costFor(riceC, 1, false, OPTS).total).toBe(9);
+  });
+
+  it('prices weighted items by the kilo', () => {
+    const cucumber = catalog.products.get('a:1502')!;
+    expect(costFor(cucumber.offers.get('a-1')!, 1.5, true, OPTS).total).toBe(10.35);
+    expect(unitPrice(cucumber, 6.9)).toEqual({ value: 6.9, per: 'לק"ג' });
+  });
+
+  it('computes price per 100 g', () => {
+    expect(unitPrice(catalog.products.get(COTTAGE)!, 6.6)).toEqual({ value: 2.64, per: 'ל-100 גרם' });
+  });
+});
+
+describe('catalog', () => {
+  it('merges the same barcode across chains and keeps the fullest name', () => {
+    const milk = catalog.products.get(MILK)!;
+    expect(milk.offers.size).toBe(3);
+    expect(milk.name).toBe('חלב 3% בקרטון 1 ליטר');
+    expect(milk.manufacturer).toBe('תנובה');
+  });
+
+  it('keeps in-house codes separate per chain', () => {
+    expect(catalog.products.has('a:1502')).toBe(true);
+    expect(catalog.products.has('b:88')).toBe(true);
+  });
+
+  it('finds products by every word of the query, in any order', () => {
+    expect(searchProducts(catalog, 'חלב 3%')[0].pid).toBe(MILK);
+    expect(searchProducts(catalog, 'פרסי אורז')[0].pid).toBe(RICE);
+    expect(searchProducts(catalog, 'שוקולד')).toEqual([]);
+  });
+
+  it('looks up scanned barcodes, with or without leading zeros', () => {
+    expect(findByBarcode(catalog, `0${MILK}`)?.pid).toBe(MILK);
+    expect(findByBarcode(catalog, '0000000000')).toBeNull();
+  });
+
+  it('suggests a similar product in a store that lacks the exact one', () => {
+    const cucumber = catalog.products.get('a:1502')!;
+    expect(suggestSubstitutes(catalog, cucumber, 'b-1').map((p) => p.pid)).toEqual(['b:88']);
+  });
+});
+
+describe('compareBasket', () => {
+  it('ranks stores by what the whole basket costs', () => {
+    const basket = [item('milk', [MILK]), item('rice', [RICE]), item('coffee', [COFFEE])];
+    const c = compareBasket(basket, catalog, ['a-1', 'b-1'], OPTS);
+    expect(c.quotes.map((q) => [q.storeId, q.total])).toEqual([
+      ['b-1', 42.9],
+      ['a-1', 49.2],
+    ]);
+  });
+
+  it('does not let a store win just because it is missing items', () => {
+    const basket = [item('milk', [MILK]), item('cottage', [COTTAGE]), item('coffee', [COFFEE])];
+    const c = compareBasket(basket, catalog, ids, OPTS);
+    const cStore = c.quotes.find((q) => q.storeId === 'c-1')!;
+    expect(cStore.total).toBe(7.5);
+    expect(cStore.missing).toEqual(['cottage', 'coffee']);
+    expect(cStore.estimate).toBeGreaterThan(30);
+    expect(c.quotes[0].storeId).toBe('b-1');
+  });
+
+  it('uses the cheapest acceptable product in each store', () => {
+    const basket = [item('cucumber', ['a:1502', 'b:88'], 2)];
+    const c = compareBasket(basket, catalog, ['a-1', 'b-1'], OPTS);
+    expect(c.quotes[0]).toMatchObject({ storeId: 'b-1', total: 11.8 });
+    expect(c.quotes[0].lines[0].pid).toBe('b:88');
+    expect(c.quotes[1]).toMatchObject({ storeId: 'a-1', total: 13.8 });
+  });
+
+  it('finds the two-store split and what it saves', () => {
+    const basket = [item('milk', [MILK]), item('rice', [RICE]), item('coffee', [COFFEE]), item('cottage', [COTTAGE], 2)];
+    const c = compareBasket(basket, catalog, ['a-1', 'b-1'], OPTS);
+    // Best single store: b-1 = 6.9 + 15 + 21 + 12.2 = 55.1
+    expect(c.quotes[0]).toMatchObject({ storeId: 'b-1', total: 55.1 });
+    // Split: rice (12) and cottage 2-for-10 from a-1; milk (6.9) and coffee (21) from b-1.
+    expect(c.split).not.toBeNull();
+    expect(c.split!.total).toBe(49.9);
+    expect(c.split!.saving).toBe(5.2);
+    expect(c.split!.stores.map((s) => s.storeId).sort()).toEqual(['a-1', 'b-1']);
+  });
+
+  it('offers no split when one store is cheapest for everything', () => {
+    const c = compareBasket([item('milk', [MILK]), item('coffee', [COFFEE])], catalog, ['a-1', 'b-1'], OPTS);
+    expect(c.split).toBeNull();
+  });
+
+  it('separates lines that are not matched or not sold anywhere', () => {
+    const basket = [item('free text', []), item('ghost', ['7290000999999']), item('milk', [MILK])];
+    const c = compareBasket(basket, catalog, ids, OPTS);
+    expect(c.unmatched.map((i) => i.id)).toEqual(['free text']);
+    expect(c.unavailable.map((i) => i.id)).toEqual(['ghost']);
+    expect(c.pricedCount).toBe(1);
+  });
+});
+
+describe('parseShoppingList', () => {
+  it('reads quantities written in the usual ways', () => {
+    expect(parseShoppingList('2 חלב\nלחם x3\n- קוטג\nביצים 2\n• עגבניות - 4 יח\'\nx3 יוגורט')).toEqual([
+      { label: 'חלב', qty: 2 },
+      { label: 'לחם', qty: 3 },
+      { label: 'קוטג', qty: 1 },
+      { label: 'ביצים', qty: 2 },
+      { label: 'עגבניות', qty: 4 },
+      { label: 'יוגורט', qty: 3 },
+    ]);
+  });
+
+  it('does not mistake sizes and percentages for quantities', () => {
+    expect(parseShoppingList('חלב 3%\n500 גרם בשר טחון\nשמן זית, מלח')).toEqual([
+      { label: 'חלב 3%', qty: 1 },
+      { label: '500 גרם בשר טחון', qty: 1 },
+      { label: 'שמן זית', qty: 1 },
+      { label: 'מלח', qty: 1 },
+    ]);
+  });
+});

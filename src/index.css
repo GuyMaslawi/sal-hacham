@@ -1,0 +1,147 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/heebo/wght.css';
+@import '@fontsource/karantina/400.css';
+@import '@fontsource/karantina/700.css';
+
+/*
+  Visual language: the supermarket shelf edge. Prices are printed the way shelf labels print
+  them (heavy condensed numerals, agorot raised), on the yellow of a promotion tag. Everything
+  around the prices stays quiet so the numbers are what the eye lands on.
+*/
+
+@theme {
+  --font-sans: 'Heebo Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Karantina', 'Heebo Variable', system-ui, sans-serif;
+
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-tag: var(--tag);
+  --color-tag-ink: var(--tag-ink);
+  --color-save: var(--save);
+  --color-alert: var(--alert);
+
+  --animate-sheet: sheet-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+  --animate-fade: fade-in 0.2s ease-out;
+  --animate-pop: pop 0.25s ease-out;
+}
+
+:root {
+  --paper: #eceff1;
+  --surface: #ffffff;
+  --sunken: #f4f6f7;
+  --ink: #15171c;
+  --muted: #5f6875;
+  --line: #d3d8de;
+  --tag: #ffd60a;
+  --tag-ink: #1c1700;
+  --save: #08703f;
+  --alert: #c2311f;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e1013;
+    --surface: #191c21;
+    --sunken: #13161a;
+    --ink: #f0f2f4;
+    --muted: #9ba3af;
+    --line: #2b3038;
+    --save: #45d394;
+    --alert: #ff8170;
+    color-scheme: dark;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop {
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@layer base {
+  html {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: none;
+  }
+  body {
+    min-height: 100dvh;
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+  button {
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  button:disabled {
+    cursor: default;
+  }
+  :focus-visible {
+    outline: 2.5px solid var(--ink);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+  /* Search fields draw their own clear button. */
+  input[type='search']::-webkit-search-cancel-button {
+    display: none;
+  }
+}
+
+@layer components {
+  /* The phone-width column every screen and overlay lives in. */
+  .frame {
+    width: 100%;
+    max-width: 30rem;
+    margin-inline: auto;
+  }
+  .overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    margin-inline: auto;
+    width: 100%;
+    max-width: 30rem;
+  }
+  /* Perforated edge between rows, like a till receipt. */
+  .perforated > * + * {
+    border-top: 1.5px dashed var(--line);
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
