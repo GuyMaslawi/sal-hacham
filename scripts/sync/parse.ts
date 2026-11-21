@@ -3,6 +3,7 @@
 import { blocks, tag, tagAny } from './xml.ts';
 import {
   cleanManufacturer,
+  cleanAddress,
   cleanText,
   normalizeCode,
   normalizeQuantity,
@@ -34,7 +35,7 @@ export function parseStores(xml: string): { chainName: string; stores: Map<strin
       stores.set(storeIdKey(id), {
         storeId: storeIdKey(id),
         name: cleanText(tag(b, 'StoreName')),
-        address: cleanText(tag(b, 'Address')),
+        address: cleanAddress(tag(b, 'Address')),
         city: cleanText(tag(b, 'City')),
         subChain: subChain || cleanText(tag(b, 'SubChainName')),
       });

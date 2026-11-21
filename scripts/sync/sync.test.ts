@@ -2,7 +2,7 @@ import { gzipSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { isStale, selectCarryOver } from './carry.ts';
 import { describeFile } from './chains.ts';
-import { normalizeCode, normalizeQuantity, quantityFromName, resolveCity } from './normalize.ts';
+import { cleanAddress, normalizeCode, normalizeQuantity, quantityFromName, resolveCity } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type RawPromo } from './parse.ts';
 import { decodeFile, tag } from './xml.ts';
 
@@ -44,6 +44,14 @@ describe('describeFile', () => {
 });
 
 describe('normalize', () => {
+  it('drops web-address fragments some chains leave in store addresses', () => {
+    expect(cleanAddress('דרך בר יהודה http 147')).toBe('דרך בר יהודה 147');
+    expect(cleanAddress('האורגים http://ww 1')).toBe('האורגים 1');
+    expect(cleanAddress('דרך הדרום http:// 1')).toBe('דרך הדרום 1');
+    expect(cleanAddress('חורב 15 www.kulinarik.co.il/|')).toBe('חורב 15');
+    expect(cleanAddress('שדרות הנשיא 134')).toBe('שדרות הנשיא 134');
+  });
+
   it('strips leading zeros and non-digits from barcodes', () => {
     expect(normalizeCode('0007290000066318')).toBe('7290000066318');
     expect(normalizeCode(' 1502 ')).toBe('1502');

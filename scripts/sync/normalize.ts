@@ -13,6 +13,18 @@ export function cleanText(s: string): string {
     .trim();
 }
 
+/**
+ * A street address as shoppers read it. Some chains leave web-address fragments in the field
+ * ("דרך בר יהודה http 147", "חורב 15 www.kulinarik.co.il/|"); those are dropped.
+ */
+export function cleanAddress(raw: string): string {
+  return cleanText(
+    cleanText(raw)
+      .replace(/\bhttps?\b(?::\/*\S*)?|\bwww\.\S*|\S+\.(?:co\.il|com|org|net)\S*/gi, ' ')
+      .replace(/\|/g, ' '),
+  );
+}
+
 /** Digits only, without leading zeros, so the same barcode matches across chains. */
 export function normalizeCode(raw: string): string {
   const digits = raw.replace(/\D/g, '').replace(/^0+/, '');
