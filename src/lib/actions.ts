@@ -1,6 +1,7 @@
 // Things the shopper does to the list that deserve a safety net or a system dialog.
 
 import { toast } from '../components/ui';
+import { isCancel, isNativeApp, nativeBuzz, nativeShare } from './native';
 import { useApp } from '../state/app';
 import { useNav } from '../state/nav';
 
@@ -34,6 +35,10 @@ export async function shareList() {
   const text = items.map((i) => (i.qty !== 1 ? `${i.qty} ${i.label}` : i.label)).join('\n');
   if (!text) return;
   try {
+    if (isNativeApp) {
+      await nativeShare('רשימת קניות', text);
+      return;
+    }
     if (navigator.share) {
       await navigator.share({ title: 'רשימת קניות', text });
       return;
@@ -42,7 +47,7 @@ export async function shareList() {
     toast('הרשימה הועתקה. אפשר להדביק אותה בכל מקום');
   } catch (err) {
     // Closing the share sheet is not an error.
-    if ((err as Error).name !== 'AbortError') toast('השיתוף לא הצליח');
+    if (!isCancel(err)) toast('השיתוף לא הצליח');
   }
 }
 
@@ -66,6 +71,7 @@ export function finishShopping() {
 
 /** A short vibration as feedback, only after the person has touched the screen (browsers refuse otherwise). */
 export function buzz(ms: number) {
+  if (isNativeApp) return nativeBuzz(ms);
   const nav = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
   if (nav.userActivation && !nav.userActivation.hasBeenActive) return;
   try {

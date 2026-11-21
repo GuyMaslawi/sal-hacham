@@ -2,6 +2,7 @@ import { Check, ChevronDown, LoaderCircle } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, cx, EmptyState, FullScreen, toast , BackButton } from '../components/ui';
 import { cityPoint, nearestCity, suggestStores, type Point, type Suggestion } from '../engine/nearby';
+import { isNativeApp, nativeLocate } from '../lib/native';
 import { chainLabel, storePlace } from '../lib/view';
 import { MAX_STORES, useApp } from '../state/app';
 import { useData } from '../state/data';
@@ -15,6 +16,8 @@ type Origin =
 
 /** Ask the device where it is. The answer stays here; it is only compared with city locations. */
 function locate(): Promise<Point> {
+  // Inside the iPhone app the system asks once, in the app's name, instead of twice.
+  if (isNativeApp) return nativeLocate();
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error('unsupported'));
     navigator.geolocation.getCurrentPosition(

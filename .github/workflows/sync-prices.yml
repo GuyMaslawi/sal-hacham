@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', '**.md', 'android/**', 'store/**']
+    paths-ignore: ['docs/**', '**.md', 'android/**', 'store/**', 'ios/**', 'capacitor.config.ts']
 
 permissions:
   contents: read

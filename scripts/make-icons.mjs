@@ -1,6 +1,6 @@
 // Renders every app icon from one drawing: the web app's, the Android app's and the Play Store's.
 // Run with `npm run icons` after changing the design.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import sharp from 'sharp';
 
 const YELLOW = '#ffd60a';
@@ -57,5 +57,22 @@ for (const [density, factor] of Object.entries(DENSITIES)) {
   );
 }
 
+// iPhone: one 1024 icon with no transparency (iOS rounds the corners itself), and the launch
+// picture, a large square that iOS crops to fill the screen.
+const IOS = 'ios/App/App/Assets.xcassets';
+if (existsSync(IOS)) {
+  jobs.push(
+    sharp(Buffer.from(svg(0, 0.88))).resize(1024, 1024).flatten({ background: YELLOW }).png()
+      .toFile(`${IOS}/AppIcon.appiconset/AppIcon-512@2x.png`),
+  );
+  const launch = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2732 2732">
+    <rect width="2732" height="2732" fill="${YELLOW}"/>
+    <g transform="translate(1366 1366) scale(1) translate(-256 -264)">${basket}</g>
+  </svg>`;
+  for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
+    jobs.push(sharp(Buffer.from(launch)).flatten({ background: YELLOW }).png().toFile(`${IOS}/Splash.imageset/${name}`));
+  }
+}
+
 await Promise.all(jobs);
-console.log('Icons written to public/, store/ and android/');
+console.log('Icons written to public/, store/, android/' + (existsSync(IOS) ? ' and ios/' : ''));

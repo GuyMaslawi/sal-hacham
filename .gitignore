@@ -5,3 +5,4 @@ public/data
 *.local
 .DS_Store
 .local-data
+dist-ios

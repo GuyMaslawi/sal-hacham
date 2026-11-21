@@ -2,6 +2,7 @@
 // in Safari's share menu, so the best we can do is explain it.
 
 import { create } from 'zustand';
+import { isNativeApp } from './native';
 
 interface InstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -28,6 +29,7 @@ const fromPlayApp = (() => {
 })();
 
 const standalone = () =>
+  isNativeApp ||
   fromPlayApp ||
   window.matchMedia('(display-mode: standalone)').matches ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;

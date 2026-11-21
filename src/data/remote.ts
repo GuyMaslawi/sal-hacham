@@ -1,13 +1,17 @@
 // Reading the published data set (see scripts/sync) and caching it on the device.
 
 import { del, get, set } from 'idb-keyval';
+import { isNativeApp, SITE_DATA_URL } from '../lib/native';
 import type { DataIndex, StoreData, StoreInfo } from '../types';
 
-/** Where the data lives. Defaults to the `data/` folder deployed next to the app. */
-const DATA_URL = ((import.meta.env.VITE_DATA_URL as string | undefined) ?? `${import.meta.env.BASE_URL}data/`).replace(
-  /\/?$/,
-  '/',
-);
+/**
+ * Where the data lives: the `data/` folder deployed next to the site, or, inside the iPhone app
+ * (which carries no price files of its own), the live site's.
+ */
+const DATA_URL = (
+  (import.meta.env.VITE_DATA_URL as string | undefined) ??
+  (isNativeApp ? SITE_DATA_URL : `${import.meta.env.BASE_URL}data/`)
+).replace(/\/?$/, '/');
 
 interface RawIndex {
   generatedAt: string;
