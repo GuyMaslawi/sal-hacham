@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="appName">סל חכם</string>
+    <string name="launcherName">סל חכם</string>
+    <string name="launchUrl" translatable="false">https://guymaslawi.github.io/sal-hacham/</string>
+    <string name="webManifestUrl" translatable="false">https://guymaslawi.github.io/sal-hacham/manifest.webmanifest</string>
+    <string name="providerAuthority" translatable="false">io.github.guymaslawi.salhacham.fileprovider</string>
+    <string name="assetStatements" translatable="false">
+        [{ \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+           \"target\": { \"namespace\": \"web\", \"site\": \"https://guymaslawi.github.io\" } }]
+    </string>
+</resources>

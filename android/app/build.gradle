@@ -1,0 +1,52 @@
+// The Google Play app: a Trusted Web Activity that opens the live site full-screen in the phone's
+// Chrome. There is no app code of our own; the web app is the app, so a change to the site reaches
+// Play users the moment it is published, without a new upload.
+
+plugins {
+    id 'com.android.application'
+}
+
+// The upload key stays outside the repository. android/build-release.sh points at it and asks for
+// its password, which is never written to disk.
+def uploadKeystore = System.getenv('SAL_UPLOAD_KEYSTORE')
+
+android {
+    namespace 'io.github.guymaslawi.salhacham'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'io.github.guymaslawi.salhacham'
+        minSdk 24
+        targetSdk 36
+        // Raise both for every upload to Google Play: the code by one, the name as you like.
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        if (uploadKeystore) {
+            upload {
+                storeFile file(uploadKeystore)
+                storePassword System.getenv('SAL_UPLOAD_PASSWORD')
+                keyAlias 'upload'
+                keyPassword System.getenv('SAL_UPLOAD_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (uploadKeystore) signingConfig signingConfigs.upload
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4'
+}

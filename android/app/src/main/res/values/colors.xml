@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The web app's own colours (src/index.css). -->
+    <color name="statusBar">#FFD60A</color>
+    <color name="statusBarDark">#0E1013</color>
+    <color name="navigationBar">#FFFFFF</color>
+    <color name="navigationBarDark">#191C21</color>
+    <color name="splashBackground">#FFD60A</color>
+    <color name="iconBackground">#FFD60A</color>
+</resources>
