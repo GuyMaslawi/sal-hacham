@@ -377,16 +377,21 @@ const netivHahesed: ChainAdapter = {
   id: 'netivhahesed',
   name: 'נתיב החסד',
   async list() {
-    const out = new Map<string, RemoteFile>();
-    for (const type of ['Stores', 'PriceFull', 'PromoFull']) {
-      const html = await getText(`${NETIV}/?FileType=${type}`);
-      for (const m of html.matchAll(/href="(\/Prices\/Download\?fileName=([^"&]+)[^"]*)"/g)) {
-        const name = decodeURIComponent(m[2]);
-        const f = describeFile(name, NETIV + decodeEntities(m[1]));
-        if (f) out.set(name, f);
+    // The page shows one day at a time; until today's files are out, use yesterday's.
+    for (const offset of [0, -1]) {
+      const date = israelDate(offset).iso;
+      const out = new Map<string, RemoteFile>();
+      for (const type of ['Stores', 'PriceFull', 'PromoFull']) {
+        const html = await getText(`${NETIV}/?FileType=${type}&Date=${date}`);
+        for (const m of html.matchAll(/href="(\/Prices\/Download\?fileName=([^"&]+)[^"]*)"/g)) {
+          const name = decodeURIComponent(m[2]);
+          const f = describeFile(name, NETIV + decodeEntities(m[1]));
+          if (f) out.set(name, f);
+        }
       }
+      if ([...out.values()].some((f) => f.kind === 'pricefull')) return [...out.values()];
     }
-    return [...out.values()];
+    return [];
   },
   download: plainDownload,
 };

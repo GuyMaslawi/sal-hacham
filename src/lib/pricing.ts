@@ -20,28 +20,58 @@ export interface PricingOptions {
 
 const usable = (p: Promo, opts: PricingOptions) => (opts.includeClub || !p.club) && (!p.end || p.end >= opts.today);
 
+/**
+ * The cheapest way to buy `qty` of a product in one store. Several deals can combine: four units
+ * with "3 for 20" and "1 for 7.50" on offer cost 20 + 7.50. A deal capped at a few units per
+ * purchase applies only that many times.
+ */
 export function costFor(offer: Offer, qty: number, weighted: boolean, opts: PricingOptions): Cost {
   const regular = offer.price * qty;
-  let best = regular;
-  let promo: Promo | null = null;
-  for (const p of offer.promos) {
-    if (!usable(p, opts)) continue;
-    let total: number;
-    if (weighted) {
-      // Per-kilo deals apply to the whole weight once the minimum weight is reached.
+  const deals = offer.promos.filter((p) => usable(p, opts));
+  if (!deals.length || !(qty > 0)) return { total: round2(regular), regular: round2(regular), promo: null };
+
+  if (weighted || !Number.isInteger(qty) || qty > 200) {
+    // By weight: the best per-kilo deal applies to the whole weight (up to its cap) once the
+    // minimum weight is reached.
+    let best = regular;
+    let promo: Promo | null = null;
+    for (const p of deals) {
       if (qty < p.minQty && p.minQty > 1) continue;
-      total = qty * (p.price / p.minQty);
-    } else {
-      if (qty < p.minQty) continue;
-      const bundles = Math.floor(qty / p.minQty);
-      total = bundles * p.price + (qty - bundles * p.minQty) * offer.price;
+      const atDeal = p.maxQty ? Math.min(qty, p.maxQty) : qty;
+      const total = atDeal * (p.price / p.minQty) + (qty - atDeal) * offer.price;
+      if (total < best - 0.001) {
+        best = total;
+        promo = p;
+      }
     }
-    if (total < best - 0.001) {
-      best = total;
-      promo = p;
-    }
+    return { total: round2(best), regular: round2(regular), promo };
   }
-  return { total: round2(best), regular: round2(regular), promo };
+
+  // By the unit: cost[n] is the cheapest way to buy n units, adding one deal at a time.
+  let cost = Array.from({ length: qty + 1 }, (_, n) => n * offer.price);
+  let shown: Array<{ promo: Promo | null; saving: number }> = cost.map(() => ({ promo: null, saving: 0 }));
+  for (const d of deals) {
+    const k = d.minQty;
+    if (!(k >= 1) || k > qty) continue;
+    const maxBundles = d.maxQty ? Math.floor(d.maxQty / k) : Math.floor(qty / k);
+    const next = cost.slice();
+    const nextShown = shown.slice();
+    for (let n = k; n <= qty; n++) {
+      for (let c = 1; c <= maxBundles && c * k <= n; c++) {
+        const candidate = cost[n - c * k] + c * d.price;
+        if (candidate < next[n] - 0.0001) {
+          next[n] = candidate;
+          // Name the deal that saves the most in this combination.
+          const saving = c * (k * offer.price - d.price);
+          const before = shown[n - c * k];
+          nextShown[n] = saving >= before.saving ? { promo: d, saving } : before;
+        }
+      }
+    }
+    cost = next;
+    shown = nextShown;
+  }
+  return { total: round2(cost[qty]), regular: round2(regular), promo: shown[qty].promo };
 }
 
 /** A deal the shopper would unlock by adding a few more units. */

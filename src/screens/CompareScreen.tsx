@@ -26,12 +26,14 @@ export function CompareScreen() {
       <>
         {header}
         <EmptyState
-          title={items.length === 0 ? 'אין מה להשוות עדיין' : 'צריך לבחור מוצרים'}
+          title={items.length === 0 ? 'אין מה להשוות עדיין' : unavailable.length ? 'אין מחירים להשוואה' : 'צריך לבחור מוצרים'}
           action={<Button onClick={() => go('list')}>{items.length === 0 ? 'בנה רשימה' : 'חזרה לרשימה'}</Button>}
         >
           {items.length === 0
             ? 'הוסף מוצרים לרשימה, ונחשב כמה כל הסל עולה בכל אחד מהסניפים שבחרת.'
-            : 'השורות ברשימה הן עדיין תזכורות בלי מוצר מסוים. בחר מוצר לכל שורה כדי לקבל מחיר.'}
+            : unavailable.length
+              ? 'המוצרים שברשימה לא נמכרים בסניפים שבחרת. אפשר להוסיף סניף בלשונית "סניפים", או לבחור מוצר דומה ברשימה.'
+              : 'השורות ברשימה הן עדיין תזכורות בלי מוצר מסוים. בחר מוצר לכל שורה כדי לקבל מחיר.'}
         </EmptyState>
       </>
     );
@@ -50,7 +52,7 @@ export function CompareScreen() {
       {header}
 
       <p className="-mt-1 px-5 pb-3 text-muted">
-        {pricedCount === 1 ? 'מוצר אחד' : `${pricedCount} מוצרים`} ב-{quotes.length === 1 ? 'סניף אחד' : `${quotes.length} סניפים`}.{' '}
+        {pricedCount === 1 ? 'מוצר אחד' : `${pricedCount} מוצרים`} {quotes.length === 1 ? 'בסניף אחד' : `ב-${quotes.length} סניפים`}.{' '}
         {quotes.length > 1 ? (
           spread >= 0.5 ? (
             <>
@@ -61,7 +63,11 @@ export function CompareScreen() {
           )
         ) : null}
         המחיר הגדול בכל כרטיס הוא כמה תשלם על כל הרשימה באותו סניף.{' '}
-        <button type="button" className="font-semibold text-ink underline underline-offset-4" onClick={() => open({ kind: 'help' })}>
+        <button
+          type="button"
+          className="-my-2 inline-block py-2.5 font-semibold text-ink underline underline-offset-4"
+          onClick={() => open({ kind: 'help' })}
+        >
           איך זה מחושב?
         </button>
       </p>
@@ -106,7 +112,7 @@ export function CompareScreen() {
                 <span className="min-w-0 truncate">{i.label}</span>
                 <button
                   type="button"
-                  className="shrink-0 text-sm font-semibold underline underline-offset-4"
+                  className="min-h-11 shrink-0 px-1 text-sm font-semibold underline underline-offset-4"
                   onClick={() => open({ kind: 'search', mode: { kind: 'match', itemId: i.id, query: i.label } })}
                 >
                   בחר מוצר
@@ -211,7 +217,7 @@ function StoreCard({
       ) : null}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 text-sm text-muted">
-        {quote.missing.length === 0 ? <span>כל {pricedCount} המוצרים</span> : null}
+        {quote.missing.length === 0 ? <span>{pricedCount === 1 ? 'המוצר נמכר כאן' : `כל ${pricedCount} המוצרים`}</span> : null}
         {quote.promoSaving >= 0.5 ? (
           <span>
             מבצעים חוסכים <Price value={quote.promoSaving} className="font-normal" />

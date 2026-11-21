@@ -13,6 +13,9 @@ export function decodeFile(raw: Buffer): string {
   }
   if (buf[0] === 0xff && buf[1] === 0xfe) return new TextDecoder('utf-16le').decode(buf.subarray(2));
   if (buf[0] === 0xfe && buf[1] === 0xff) return new TextDecoder('utf-16be').decode(buf.subarray(2));
+  // UTF-16 without a byte-order mark: every other byte of the leading "<?xml" or "<Root" is zero.
+  if (buf.length > 4 && buf[0] === 0x3c && buf[1] === 0 && buf[3] === 0) return new TextDecoder('utf-16le').decode(buf);
+  if (buf.length > 4 && buf[0] === 0 && buf[1] === 0x3c && buf[2] === 0) return new TextDecoder('utf-16be').decode(buf);
   if (buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) buf = buf.subarray(3);
   const head = buf.subarray(0, 200).toString('latin1').toLowerCase();
   if (head.includes('windows-1255') || head.includes('iso-8859-8')) {
@@ -66,11 +69,14 @@ const tagCache = new Map<string, RegExp>();
 export function tag(block: string, name: string): string {
   let re = tagCache.get(name);
   if (!re) {
-    re = new RegExp(`<${name}(?:\\s[^>]*)?>([^<]*)</${name}\\s*>`, 'i');
+    // Text may be wrapped in CDATA: <ItemName><![CDATA[...]]></ItemName>.
+    re = new RegExp(`<${name}(?:\\s[^>]*)?>((?:<!\\[CDATA\\[[\\s\\S]*?\\]\\]>|[^<])*)</${name}\\s*>`, 'i');
     tagCache.set(name, re);
   }
   const m = re.exec(block);
-  return m ? decodeEntities(m[1]).trim() : '';
+  if (!m) return '';
+  const raw = m[1].includes('<![CDATA[') ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1') : decodeEntities(m[1]);
+  return raw.trim();
 }
 
 /** First non-empty value among several possible tag names. */

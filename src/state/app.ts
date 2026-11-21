@@ -104,7 +104,11 @@ export const useApp = create<AppState>()(
         set((s) => {
           const items = [...s.items];
           for (const { item, index } of [...entries].sort((a, b) => a.index - b.index)) {
-            if (!items.some((i) => i.id === item.id)) items.splice(Math.min(index, items.length), 0, item);
+            if (items.some((i) => i.id === item.id)) continue;
+            // The same product was added again meanwhile: keep one line, with the larger amount.
+            const same = item.pids[0] ? items.findIndex((i) => i.pids[0] === item.pids[0]) : -1;
+            if (same >= 0) items[same] = { ...items[same], qty: Math.max(items[same].qty, item.qty) };
+            else items.splice(Math.min(index, items.length), 0, item);
           }
           return { items };
         }),
@@ -143,7 +147,27 @@ export const useApp = create<AppState>()(
       // Settings saved by an older version lack newer fields; fill them with defaults.
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<AppState>;
-        return { ...current, ...p, settings: { ...current.settings, ...(p.settings ?? {}) } };
+        // Anything malformed (an older version, a half-written save) is dropped rather than
+        // allowed to break the app on every start.
+        const items = Array.isArray(p.items)
+          ? p.items.filter(
+              (i) =>
+                i &&
+                typeof i.id === 'string' &&
+                typeof i.label === 'string' &&
+                typeof i.qty === 'number' &&
+                i.qty > 0 &&
+                Array.isArray(i.pids),
+            )
+          : current.items;
+        const storeIds = Array.isArray(p.storeIds) ? p.storeIds.filter((id) => typeof id === 'string') : current.storeIds;
+        return {
+          ...current,
+          ...p,
+          items,
+          storeIds,
+          settings: { ...current.settings, ...(p.settings && typeof p.settings === 'object' ? p.settings : {}) },
+        };
       },
       partialize: ({ storeIds, items, settings, shopStoreId, installHintDismissed }) => ({
         storeIds,

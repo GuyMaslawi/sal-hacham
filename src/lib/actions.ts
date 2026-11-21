@@ -63,3 +63,14 @@ export function finishShopping() {
     bought.length ? { label: 'בטל', run: () => restoreItems(bought) } : undefined,
   );
 }
+
+/** A short vibration as feedback, only after the person has touched the screen (browsers refuse otherwise). */
+export function buzz(ms: number) {
+  const nav = navigator as Navigator & { userActivation?: { hasBeenActive: boolean } };
+  if (nav.userActivation && !nav.userActivation.hasBeenActive) return;
+  try {
+    nav.vibrate?.(ms);
+  } catch {
+    /* not supported */
+  }
+}

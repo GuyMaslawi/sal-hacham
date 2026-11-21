@@ -55,9 +55,24 @@ export function quantityFromName(name: string): { qty: number; unit: Unit } | nu
 
 const round = (n: number) => Math.round(n * 1000) / 1000;
 
+/** A number written either way: "12.90" or "12,90". */
+export function parseNumber(raw: string): number {
+  const t = raw.trim();
+  return parseFloat(/^\d+,\d+$/.test(t) ? t.replace(',', '.') : t.replace(/,/g, ''));
+}
+
+// Package sizes outside this range (grams or millilitres) are almost certainly a unit mix-up.
+const PLAUSIBLE = { min: 3, max: 40_000 };
+const plausible = (q: { qty: number; unit: Unit }) =>
+  q.unit === 'u' || q.unit === 'm' || (q.qty >= PLAUSIBLE.min && q.qty <= PLAUSIBLE.max);
+
 /**
  * Normalize the declared package size to grams / millilitres / units.
  * Weighted items are priced per kilogram, so they normalize to 1000 g.
+ *
+ * UnitQty names the unit of Quantity. UnitOfMeasure is the unit the shelf label compares by
+ * ("100 גרם", "1 ק\"ג"), so it only hints at the kind of unit, never at a factor. Whatever the
+ * fields say, a size written in the product name wins when the two differ by about a thousand.
  */
 export function normalizeQuantity(
   quantityRaw: string,
@@ -67,17 +82,41 @@ export function normalizeQuantity(
   name: string,
 ): { qty: number; unit: Unit } {
   if (weighted) return { qty: 1000, unit: 'g' };
-  const qty = parseFloat(quantityRaw.replace(',', '.'));
-  const u = unitFromText(unitQtyRaw) ?? unitFromText(unitOfMeasureRaw.replace(/^[\d.\s]+/, ''));
-  if (u && qty > 0 && qty < 100_000) {
-    // "1 unit" tells us nothing if the name carries a real size.
-    if (u.unit === 'u' && qty === 1) {
-      const fromName = quantityFromName(name);
-      if (fromName && fromName.unit !== 'u') return fromName;
+  const qty = parseNumber(quantityRaw);
+  const fromName = quantityFromName(name);
+  const declared = unitFromText(unitQtyRaw);
+  const hinted = declared ? null : unitFromText(unitOfMeasureRaw.replace(/^[\d.\s]+/, ''));
+
+  let result: { qty: number; unit: Unit } | null = null;
+  if (qty > 0 && qty < 100_000) {
+    if (declared) {
+      result = { qty: round(qty * declared.factor), unit: declared.unit };
+      // Some stores say "liter" or "kilo" but count in millilitres or grams (450 "liters" of
+      // bread rolls): take the number as is when only that reading is believable.
+      const asIs = { qty: round(qty), unit: declared.unit };
+      if (declared.factor > 1 && !plausible(result) && plausible(asIs)) result = asIs;
+    } else if (hinted) {
+      // The same number read as grams or as kilograms: take the one that agrees with the
+      // name, or else the one that is a believable package size.
+      const asIs = { qty: round(qty), unit: hinted.unit };
+      const scaled = { qty: round(qty * hinted.factor), unit: hinted.unit };
+      const options = hinted.factor === 1 ? [asIs] : [asIs, scaled];
+      result =
+        (fromName && options.find((o) => o.unit === fromName.unit && Math.abs(o.qty / fromName.qty - 1) < 0.2)) ||
+        options.find(plausible) ||
+        asIs;
     }
-    return { qty: round(qty * u.factor), unit: u.unit };
   }
-  return quantityFromName(name) ?? { qty: 0, unit: '' };
+  if (!result) return fromName ?? { qty: 0, unit: '' };
+
+  // "1 unit" tells us nothing if the name carries a real size.
+  if (result.unit === 'u' && result.qty === 1 && fromName && fromName.unit !== 'u') return fromName;
+  if (fromName && fromName.unit === result.unit && result.unit !== 'u') {
+    const ratio = result.qty / fromName.qty;
+    if ((ratio > 500 && ratio < 2000) || (ratio > 1 / 2000 && ratio < 1 / 500)) return fromName;
+  }
+  if (!plausible(result) && fromName && plausible(fromName)) return fromName;
+  return result;
 }
 
 // ---- Cities -------------------------------------------------------------------------------

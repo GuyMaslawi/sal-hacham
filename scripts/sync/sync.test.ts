@@ -3,12 +3,18 @@ import { describe, expect, it } from 'vitest';
 import { isStale, selectCarryOver } from './carry.ts';
 import { describeFile } from './chains.ts';
 import { normalizeCode, normalizeQuantity, quantityFromName, resolveCity } from './normalize.ts';
-import { parsePriceFull, parsePromoFull, parseStores, pickPromos } from './parse.ts';
-import { decodeFile } from './xml.ts';
+import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type RawPromo } from './parse.ts';
+import { decodeFile, tag } from './xml.ts';
 
 const TODAY = '2026-11-20';
 
 describe('decodeFile', () => {
+  it('reads UTF-16 without a byte-order mark, and CDATA text', () => {
+    const xml = '<Root><Item><ItemName><![CDATA[חלב & שוקו]]></ItemName></Item></Root>';
+    expect(decodeFile(Buffer.from(xml, 'utf16le'))).toBe(xml);
+    expect(tag(xml, 'ItemName')).toBe('חלב & שוקו');
+  });
+
   it('reads gzip, UTF-8 with BOM and UTF-16 files', () => {
     const xml = '<Root><StoreName>שלום</StoreName></Root>';
     expect(decodeFile(gzipSync(Buffer.from(xml)))).toBe(xml);
@@ -48,6 +54,20 @@ describe('normalize', () => {
     expect(normalizeQuantity('1.5', 'ליטר', 'ליטר', false, 'קולה')).toEqual({ qty: 1500, unit: 'ml' });
     expect(normalizeQuantity('1.32', 'לא ידוע', 'ליטר', false, 'רביעיית פחיות')).toEqual({ qty: 1320, unit: 'ml' });
     expect(normalizeQuantity('2', 'קילוגרם', '', false, 'סוכר')).toEqual({ qty: 2000, unit: 'g' });
+  });
+
+  it('does not take a factor from the shelf comparison unit', () => {
+    expect(normalizeQuantity('450', '', '1 ק"ג', false, 'לחמניות')).toEqual({ qty: 450, unit: 'g' });
+    expect(normalizeQuantity('1.5', '', 'ליטר', false, 'חלב 1.5 ליטר')).toEqual({ qty: 1500, unit: 'ml' });
+  });
+
+  it('reads "450 liters" of bread rolls as 450, since only that is believable', () => {
+    expect(normalizeQuantity('450.00', 'ליטר', 'ליטר 1', false, '6 לחמניות רכות')).toEqual({ qty: 450, unit: 'ml' });
+  });
+
+  it('prefers the size in the name when the fields are off by a thousand', () => {
+    expect(normalizeQuantity('1500', 'ליטר', '', false, 'חלב 1.5 ליטר')).toEqual({ qty: 1500, unit: 'ml' });
+    expect(normalizeQuantity('3', 'גרם', '', false, 'בונזו 3 ק"ג')).toEqual({ qty: 3000, unit: 'g' });
   });
 
   it('treats weighted items as priced per kilogram', () => {
@@ -141,7 +161,7 @@ describe('parsePromoFull', () => {
       promo({ desc: '12.90 דבש', items: promoItem('222', '3', '1.00', '12.90') }),
       promo({ desc: 'חטיפים 6 ב-25', items: promoItem('333', '10', '6', '25.00') + promoItem('444', '10', '6', '25.00') }),
     );
-    expect(map.get('111')).toEqual([{ minQty: 2, price: 12, club: false, end: '2026-11-28', desc: '2ב12 תירס' }]);
+    expect(map.get('111')).toMatchObject([{ minQty: 2, price: 12, club: false, end: '2026-11-28', desc: '2ב12 תירס' }]);
     expect(map.get('222')?.[0]).toMatchObject({ minQty: 1, price: 12.9 });
     expect(map.get('333')?.[0]).toMatchObject({ minQty: 6, price: 25 });
     expect(map.get('444')?.[0]).toMatchObject({ minQty: 6, price: 25 });
@@ -174,19 +194,110 @@ describe('parsePromoFull', () => {
 
 describe('pickPromos', () => {
   const base = { code: '1', name: 'x', manufacturer: '', price: 10, qty: 0, unit: '' as const, weighted: false };
+  const raw = (minQty: number, price: number, club = false, extra: Partial<RawPromo> = {}): RawPromo => ({
+    minQty,
+    price,
+    club,
+    end: '',
+    desc: '',
+    rawPrice: price,
+    rate: null,
+    basis: 'text',
+    weighted: false,
+    ...extra,
+  });
   const deal = (minQty: number, price: number, club = false) => ({ minQty, price, club, end: '', desc: '' });
 
   it('drops deals that are not cheaper, or implausibly cheap', () => {
-    expect(pickPromos(base, [deal(1, 10), deal(2, 21), deal(1, 0.5)])).toEqual([]);
+    expect(pickPromos(base, [raw(1, 10), raw(2, 21), raw(1, 0.5)])).toEqual([]);
   });
 
-  it('keeps the best public deal, a single-unit fallback and a better club price', () => {
-    const picked = pickPromos(base, [deal(3, 21), deal(1, 9), deal(2, 18.5), deal(1, 6, true), deal(1, 8, true)]);
+  it('keeps every bundle size that beats the smaller ones, and a better club price', () => {
+    const picked = pickPromos(base, [raw(3, 21), raw(1, 9), raw(2, 18.5), raw(1, 6, true), raw(1, 8, true)]);
+    // 2 for 18.50 (9.25 each) is no better than 1 for 9, so it adds nothing.
     expect(picked).toEqual([deal(3, 21), deal(1, 9), deal(1, 6, true)]);
   });
 
+  it('keeps a middle bundle when it is a real step down in price', () => {
+    const picked = pickPromos(base, [raw(1, 9), raw(2, 16), raw(4, 28)]);
+    expect(picked).toEqual([deal(4, 28), deal(2, 16), deal(1, 9)]);
+  });
+
   it('ignores a club price that does not beat the public one', () => {
-    expect(pickPromos(base, [deal(1, 7), deal(1, 8, true)])).toEqual([deal(1, 7)]);
+    expect(pickPromos(base, [raw(1, 7), raw(1, 8, true)])).toEqual([deal(1, 7)]);
+  });
+
+  it('reads a bundle price as one unit when the discount rate says so', () => {
+    // Shelf 169, "15% off" published as [2 units, 143.65]: 143.65 is 169 less 15%, i.e. one unit.
+    const shelf = { ...base, price: 169 };
+    const p = raw(2, 143.65, false, { basis: 'majority', rate: 15, rawPrice: 143.65 });
+    expect(pickPromos(shelf, [p])).toEqual([deal(2, 287.3)]);
+  });
+});
+
+describe('parsePromoFull: price conventions', () => {
+  const file = (...promos: string[]) => `<Root><Promotions>${promos.join('')}</Promotions></Root>`;
+  const one = (desc: string, code: string, minQty: string, price: string, weighted = '0') =>
+    `<Promotion><PromotionDescription>${desc}</PromotionDescription><PromotionEndDateTime>2026-12-31</PromotionEndDateTime>
+     <ClubID>0</ClubID><Groups><Group><PromotionItems><PromotionItem><ItemCode>${code}</ItemCode><RewardType>1</RewardType>
+     <MinQty>${minQty}</MinQty><DiscountedPrice>${price}</DiscountedPrice><bIsWeighted>${weighted}</bIsWeighted>
+     </PromotionItem></PromotionItems></Group></Groups></Promotion>`;
+  const priceOf = (m: Map<string, RawPromo[]>, code: string) => m.get(code)?.map((p) => [p.minQty, p.price]);
+
+  it('turns a per-unit price into the bundle total when the wording says "N for X"', () => {
+    const m = parsePromoFull(file(one('אורז בסמטי 2 ב22', '1', '2', '11')), TODAY);
+    expect(priceOf(m, '1')).toEqual([[2, 22]]);
+  });
+
+  it('leaves a bundle total alone', () => {
+    const m = parsePromoFull(file(one('2ב12 תירס', '1', '2', '12')), TODAY);
+    expect(priceOf(m, '1')).toEqual([[2, 12]]);
+  });
+
+  it('applies the file\'s own convention to deals without wording', () => {
+    const m = parsePromoFull(
+      file(
+        one('אורז 2 ב22', '1', '2', '11'),
+        one('פסטה 3 ב15', '2', '3', '5'),
+        one('קפה 2 ב30', '3', '2', '15'),
+        one('מבצע שבועי', '4', '2', '8'),
+      ),
+      TODAY,
+    );
+    expect(priceOf(m, '4')).toEqual([[2, 16]]);
+  });
+
+  it('reads weighed items by the kilo', () => {
+    const m = parsePromoFull(
+      file(one('חזה עוף 2 ב 59.90', '5', '2', '29.95', '1'), one('אבוקדו 14.90', '6', '0.01', '14.9', '1')),
+      TODAY,
+    );
+    expect(priceOf(m, '5')).toEqual([[2, 59.9]]);
+    expect(priceOf(m, '6')).toEqual([[1, 14.9]]);
+  });
+
+  it('restores the bundle size when it was published as one unit', () => {
+    const m = parsePromoFull(file(one('שוקולד 2ב21.90ש', '7', '1', '10.95')), TODAY);
+    expect(priceOf(m, '7')).toEqual([[2, 21.9]]);
+  });
+
+  it('drops online-only and minimum-basket deals and marks members-only wording as club', () => {
+    const m = parsePromoFull(
+      file(
+        one('מבצע אונליין במבה', '8', '1', '3'),
+        one('בקנייה מעל 75 ש"ח', '9', '1', '3'),
+        one('מחיר לחברי מועדון', '10', '1', '3'),
+      ),
+      TODAY,
+    );
+    expect(m.has('8')).toBe(false);
+    expect(m.has('9')).toBe(false);
+    expect(m.get('10')?.[0].club).toBe(true);
+  });
+
+  it('reads compact end dates and comma decimals', () => {
+    const xml = file(one('מבצע', '11', '1', '12,90').replace('2026-12-31', '20261231'));
+    expect(parsePromoFull(xml, TODAY).get('11')?.[0]).toMatchObject({ price: 12.9, end: '2026-12-31' });
   });
 });
 

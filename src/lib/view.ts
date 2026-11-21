@@ -9,7 +9,9 @@ import type { PricingOptions } from './pricing';
 
 export function usePricingOptions(): PricingOptions {
   const includeClub = useApp((s) => s.settings.includeClub);
-  return useMemo(() => ({ includeClub, today: todayInIsrael() }), [includeClub]);
+  // Read the date on every render: an app left open past midnight must drop yesterday's deals.
+  const today = todayInIsrael();
+  return useMemo(() => ({ includeClub, today }), [includeClub, today]);
 }
 
 /** The chosen stores, in the order they were added. Stores no longer published are dropped. */

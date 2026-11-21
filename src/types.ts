@@ -37,6 +37,8 @@ export interface Promo {
   /** Last valid day, YYYY-MM-DD ('' when unknown). */
   end: string;
   desc: string;
+  /** Most units the deal applies to per purchase, when the chain limits it. */
+  maxQty?: number;
 }
 
 /** What one store charges for one product. */
@@ -54,7 +56,7 @@ export type StoreRow = [
   qty: number,
   unit: Unit,
   weighted: 0 | 1,
-  promos?: Array<[minQty: number, price: number, club: 0 | 1, end: string, desc: string]>,
+  promos?: Array<[minQty: number, price: number, club: 0 | 1, end: string, desc: string, maxQty?: number]>,
 ];
 
 export interface StoreData {

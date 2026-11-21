@@ -23,6 +23,7 @@
   --color-tag-ink: var(--tag-ink);
   --color-save: var(--save);
   --color-alert: var(--alert);
+  --color-on-alert: var(--on-alert);
 
   --animate-sheet: sheet-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
   --animate-fade: fade-in 0.2s ease-out;
@@ -41,6 +42,7 @@
   --tag-ink: #1c1700;
   --save: #08703f;
   --alert: #c2311f;
+  --on-alert: #ffffff;
   color-scheme: light;
 }
 
@@ -54,6 +56,7 @@
     --line: #2b3038;
     --save: #45d394;
     --alert: #ff8170;
+    --on-alert: #2a0700;
     color-scheme: dark;
   }
 }

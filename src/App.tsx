@@ -38,15 +38,22 @@ export default function App() {
   }, [ready]);
 
   useEffect(() => {
-    // Coming back to the app after a while (the next shopping trip): look for newer prices.
-    const onVisible = () => {
-      if (document.visibilityState === 'visible' && Date.now() - lastRefresh > 60 * 60 * 1000) {
+    // Coming back to the app after a while (the next shopping trip), or back online after the
+    // first start failed: look for the store list and newer prices.
+    const maybeRefresh = () => {
+      const missingIndex = !useData.getState().index;
+      if (document.visibilityState !== 'visible') return;
+      if (missingIndex || Date.now() - lastRefresh > 60 * 60 * 1000) {
         lastRefresh = Date.now();
         void useData.getState().refresh();
       }
     };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    document.addEventListener('visibilitychange', maybeRefresh);
+    window.addEventListener('online', maybeRefresh);
+    return () => {
+      document.removeEventListener('visibilitychange', maybeRefresh);
+      window.removeEventListener('online', maybeRefresh);
+    };
   }, []);
 
   if (!ready) {
@@ -104,16 +111,24 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
 
 function DownloadStatus() {
   const loading = useData((s) => s.loading);
+  const problem = useData((s) => s.problem);
   const states = Object.values(loading);
   const failed = states.filter((s) => s === 'error').length;
   const busy = states.filter((s) => s === 'loading').length;
+  if (problem && !busy) {
+    return (
+      <div role="alert" className="bg-alert px-4 py-2.5 text-center text-[0.95rem] font-semibold text-on-alert">
+        {problem}
+      </div>
+    );
+  }
   if (!failed && !busy) return null;
   return (
     <div
       role="status"
       className={cx(
         'flex flex-wrap items-center justify-center gap-x-2 px-4 py-2.5 text-center text-[0.95rem] font-semibold',
-        busy ? 'bg-tag text-tag-ink' : 'bg-alert text-white',
+        busy ? 'bg-tag text-tag-ink' : 'bg-alert text-on-alert',
       )}
     >
       {busy ? (
@@ -124,7 +139,11 @@ function DownloadStatus() {
       ) : (
         <>
           לא הצלחנו להוריד מחירים ל{failed === 1 ? 'סניף אחד' : `-${failed} סניפים`}. בדוק את האינטרנט.
-          <button type="button" className="underline underline-offset-4" onClick={() => void useData.getState().refresh()}>
+          <button
+            type="button"
+            className="min-h-11 px-2 underline underline-offset-4"
+            onClick={() => void useData.getState().refresh()}
+          >
             נסה שוב
           </button>
         </>
@@ -166,7 +185,7 @@ function TabBar() {
               <span className={cx('relative flex h-8 w-14 items-center justify-center rounded-full', active && 'bg-tag text-tag-ink')}>
                 <Icon className="size-[1.4rem]" strokeWidth={active ? 2.4 : 2} />
                 {id === 'list' && pending > 0 && !active ? (
-                  <span className="num absolute -top-0.5 end-1 min-w-5 rounded-full bg-ink px-1 text-center text-[0.7rem] leading-5 font-bold text-surface">
+                  <span className="num absolute -top-1 end-0.5 min-w-[1.4rem] rounded-full bg-ink px-1 text-center text-[0.8rem] leading-[1.4rem] font-bold text-surface">
                     {pending}
                   </span>
                 ) : null}
@@ -246,7 +265,14 @@ function Welcome() {
             <span className="num font-semibold text-ink">{cities}</span> ערים. חינם, בלי הרשמה, והרשימה נשארת אצלך בטלפון.
           </p>
         ) : indexError ? (
-          <p className="mt-4 text-alert">לא הצלחנו להוריד את רשימת הסניפים. בדוק את החיבור לאינטרנט ופתח שוב.</p>
+          <div className="mt-4">
+            <p className="text-alert">
+              כדי להתחיל צריך חיבור לאינטרנט, פעם אחת. אחר כך האפליקציה עובדת גם בלי קליטה.
+            </p>
+            <Button variant="outline" className="mt-2" onClick={() => void useData.getState().refresh()}>
+              נסה שוב
+            </Button>
+          </div>
         ) : (
           <p className="mt-4 text-muted">טוען את רשימת הסניפים.</p>
         )}

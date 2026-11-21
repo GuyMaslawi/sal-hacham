@@ -234,9 +234,16 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
 
       <div className="flex-1 overflow-y-auto overscroll-contain pb-28">
         {!index ? (
-          <EmptyState title={indexError ? 'אין חיבור לנתונים' : 'טוען סניפים'}>
+          <EmptyState
+            title={indexError ? 'אין חיבור לאינטרנט' : 'טוען סניפים'}
+            action={
+              indexError ? (
+                <Button onClick={() => void useData.getState().refresh()}>נסה שוב</Button>
+              ) : undefined
+            }
+          >
             {indexError
-              ? 'לא הצלחנו להוריד את רשימת הסניפים. בדוק את החיבור לאינטרנט ופתח שוב.'
+              ? 'כדי לבחור סניפים בפעם הראשונה צריך חיבור לאינטרנט. התחבר לרשת ולחץ "נסה שוב".'
               : 'רגע, מביאים את רשימת הסניפים המעודכנת.'}
           </EmptyState>
         ) : !city ? (
@@ -312,7 +319,16 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
           {chosen.length === 0 ? (
             <p className="pb-2 text-center text-sm text-muted">לחץ על סניף כדי לסמן אותו.</p>
           ) : null}
-          <Button variant="tag" className="w-full" disabled={chosen.length === 0} onClick={close}>
+          <Button
+            variant="tag"
+            className="w-full"
+            disabled={chosen.length === 0}
+            onClick={() => {
+              // Opened from the suggestions screen: continue to the list, not back to it.
+              if (useNav.getState().stack.some((o) => o.kind === 'nearby')) useNav.getState().go('list');
+              else close();
+            }}
+          >
             {chosen.length === 0 ? 'עוד לא נבחר סניף' : chosen.length === 1 ? 'המשך עם סניף אחד' : `המשך עם ${chosen.length} סניפים`}
           </Button>
         </div>

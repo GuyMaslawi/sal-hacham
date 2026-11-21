@@ -24,6 +24,12 @@ import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type PriceItem
 import { decodeFile } from './xml.ts';
 
 const DATA_VERSION = 1;
+/**
+ * Bumped whenever parsing changes what a store file means (deal prices, sizes, filters). Stores
+ * built by an older parser are not carried into a new run: better a store missing for a few
+ * hours than one showing prices read the old, wrong way.
+ */
+const PARSER_VERSION = 2;
 const MIN_ITEMS_PER_STORE = 200;
 
 interface Args {
@@ -68,6 +74,8 @@ interface StoreEntry {
   p: number;
   f: string;
   z: number;
+  /** Version of the parser that built the file. */
+  pv?: number;
 }
 
 const stampToIso = (s: string) =>
@@ -151,7 +159,9 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
       .map((it) => {
         const row: unknown[] = [it.code, it.name, it.manufacturer, it.price, it.qty, it.unit, it.weighted ? 1 : 0];
         const deals = promos.get(it.code);
-        if (deals) row.push(deals.map((d) => [d.minQty, d.price, d.club ? 1 : 0, d.end, d.desc]));
+        if (deals) {
+          row.push(deals.map((d) => [d.minQty, d.price, d.club ? 1 : 0, d.end, d.desc, ...(d.maxQty ? [d.maxQty] : [])]));
+        }
         return row;
       });
 
@@ -162,7 +172,20 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
     writeFileSync(join(args.out, file), gz);
 
     const d = describe(storeId);
-    return { id, c: chain.id, n: d.name, sub: d.sub, city: d.city, a: d.address, u: updated, k: rows.length, p: promos.size, f: file, z: gz.length };
+    return {
+      id,
+      c: chain.id,
+      n: d.name,
+      sub: d.sub,
+      city: d.city,
+      a: d.address,
+      u: updated,
+      k: rows.length,
+      p: promos.size,
+      f: file,
+      z: gz.length,
+      pv: PARSER_VERSION,
+    };
   });
 
   const entries: StoreEntry[] = [];
@@ -191,7 +214,8 @@ function carryOverFromFolder(args: Args, stores: StoreEntry[], today: string): n
   const previous = JSON.parse(readFileSync(indexPath, 'utf8')) as { stores: StoreEntry[] };
   const wanted = args.chains ? new Set(args.chains) : null;
   let count = 0;
-  for (const entry of selectCarryOver(previous.stores, new Set(stores.map((s) => s.id)), today)) {
+  const current = previous.stores.filter((e) => e.pv === PARSER_VERSION);
+  for (const entry of selectCarryOver(current, new Set(stores.map((s) => s.id)), today)) {
     if (wanted && !wanted.has(entry.c)) continue;
     const source = join(args.fallback, entry.f);
     if (!existsSync(source)) continue;
@@ -213,7 +237,8 @@ async function carryOverFromSite(args: Args, stores: StoreEntry[], today: string
     return 0; // First deploy, or the site is unreachable: nothing to carry.
   }
   const wanted = args.chains ? new Set(args.chains) : null;
-  const missing = selectCarryOver(previous.stores, new Set(stores.map((s) => s.id)), today).filter(
+  const current = previous.stores.filter((e) => e.pv === PARSER_VERSION);
+  const missing = selectCarryOver(current, new Set(stores.map((s) => s.id)), today).filter(
     (e) => !wanted || wanted.has(e.c),
   );
   const results = await mapPool(missing, 8, async (entry) => {

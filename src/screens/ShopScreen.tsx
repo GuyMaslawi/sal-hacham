@@ -1,11 +1,12 @@
 import { Check } from 'lucide-react';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Button, cx, DealChip, EmptyState, Price, QtyBadge, ScreenHeader } from '../components/ui';
 import { finishShopping } from '../lib/actions';
 import { quoteLine, type Line } from '../engine/optimizer';
 import { nextDeal, promoLabel } from '../lib/pricing';
 import { storeTitle, useChosenStores, useComparison, usePricingOptions } from '../lib/view';
 import { useApp } from '../state/app';
+import { buzz } from '../lib/actions';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
 import type { ListItem, Promo, StoreInfo } from '../types';
@@ -56,6 +57,16 @@ export function ShopScreen() {
       void sentinel?.release().catch(() => undefined);
     };
   }, []);
+
+  // Keep the current store's chip in view, moving only the chip row, never the page.
+  const chipRow = useRef<HTMLDivElement>(null);
+  const storeIdForScroll = shopStoreId;
+  useEffect(() => {
+    const row = chipRow.current;
+    const chip = row?.querySelector<HTMLElement>('[aria-checked="true"]');
+    if (!row || !chip) return;
+    row.scrollTo({ left: chip.offsetLeft - (row.clientWidth - chip.offsetWidth) / 2, behavior: 'smooth' });
+  }, [storeIdForScroll]);
 
   // Default to the cheapest store until the shopper says where they are.
   const storeId = shopStoreId ?? comparison.quotes[0]?.storeId ?? stores[0]?.id;
@@ -108,7 +119,12 @@ export function ShopScreen() {
       {header}
 
       {stores.length > 1 ? (
-        <div className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none]" role="radiogroup" aria-label="באיזה סניף אתה?">
+        <div
+          ref={chipRow}
+          className="flex gap-2 overflow-x-auto px-4 pb-3 [scrollbar-width:none]"
+          role="radiogroup"
+          aria-label="באיזה סניף אתה?"
+        >
           {stores.map((s) => (
             <button
               key={s.id}
@@ -116,8 +132,7 @@ export function ShopScreen() {
               role="radio"
               aria-checked={s.id === storeId}
               onClick={() => useApp.getState().setShopStore(s.id)}
-              // Keep the current store's chip in view when the row is wider than the screen.
-              ref={s.id === storeId ? (el) => el?.scrollIntoView({ block: 'nearest', inline: 'center' }) : undefined}
+              data-store={s.id}
               className={cx(
                 'min-h-11 shrink-0 rounded-full border-[1.5px] px-4 text-sm font-semibold whitespace-nowrap',
                 s.id === storeId ? 'border-ink bg-ink text-surface' : 'border-line bg-surface',
@@ -201,7 +216,7 @@ function CheckRow({ row }: { row: ShopRow }) {
         aria-checked={item.checked}
         aria-label={item.label}
         onClick={() => {
-          navigator.vibrate?.(12);
+          buzz(12);
           toggle(item.id);
         }}
         className="flex size-16 shrink-0 items-center justify-center"

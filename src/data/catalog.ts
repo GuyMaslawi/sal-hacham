@@ -14,10 +14,18 @@ export interface Catalog {
 export const EMPTY_CATALOG: Catalog = { products: new Map(), list: [], storeIds: [] };
 
 /**
- * Real barcodes (8+ digits) identify the same product everywhere. Shorter codes are a chain's
- * own numbering for produce, bakery and deli items, so they only match inside that chain.
+ * Which rows are the same product. The id depends only on the row itself, never on which other
+ * stores happen to be loaded, so a saved list keeps pointing at the same thing.
+ *
+ * - Real barcodes identify a product everywhere.
+ * - Short codes, and the 7290000000000-7290000009999 block, are a chain's own numbering for
+ *   produce, bakery and deli items: the same number means different things in different chains.
+ * - A product sold by weight in one chain and by the unit in another is two products.
  */
-export const productId = (code: string, chainId: string) => (code.length >= 8 ? code : `${chainId}:${code}`);
+export function productId(code: string, chainId: string, weighted: boolean): string {
+  const base = code.length >= 8 && !/^729000000\d{4}$/.test(code) ? code : `${chainId}:${code}`;
+  return weighted ? `${base}~kg` : base;
+}
 
 export function buildCatalog(datasets: StoreData[], stores: StoreInfo[]): Catalog {
   const chainOf = new Map(stores.map((s) => [s.id, s.chainId]));
@@ -28,7 +36,7 @@ export function buildCatalog(datasets: StoreData[], stores: StoreInfo[]): Catalo
     if (!chainId) continue;
     for (const row of data.items) {
       const [code, name, manufacturer, price, qty, unit, weighted, promos] = row;
-      const pid = productId(code, chainId);
+      const pid = productId(code, chainId, weighted === 1);
       let p = products.get(pid);
       if (!p) {
         p = { pid, code, name, manufacturer, qty, unit, weighted: weighted === 1, norm: '', offers: new Map() };
@@ -44,13 +52,24 @@ export function buildCatalog(datasets: StoreData[], stores: StoreInfo[]): Catalo
       }
       p.offers.set(data.id, {
         price,
-        promos: promos ? promos.map(([minQty, pr, club, end, desc]) => ({ minQty, price: pr, club: club === 1, end, desc })) : [],
+        promos: promos
+          ? promos.map(([minQty, pr, club, end, desc, maxQty]) => ({
+              minQty,
+              price: pr,
+              club: club === 1,
+              end,
+              desc,
+              ...(maxQty ? { maxQty } : {}),
+            }))
+          : [],
       });
     }
   }
 
   const list = [...products.values()];
   for (const p of list) p.norm = normalize(`${p.name} ${p.manufacturer}`);
+  // Lists saved before ids carried the chain or the weight still find their product.
+  for (const p of list) if (p.pid !== p.code && !products.has(p.code)) products.set(p.code, p);
   return { products, list, storeIds: datasets.map((d) => d.id) };
 }
 

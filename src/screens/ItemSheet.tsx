@@ -219,7 +219,7 @@ function MissingRow({ item, store, title, main }: { item: ListItem; store: Store
                 </span>
                 <Button
                   variant="outline"
-                  className="min-h-9 shrink-0 rounded-full px-3 text-sm"
+                  className="min-h-11 shrink-0 rounded-full px-3 text-sm"
                   onClick={() => useApp.getState().attachProduct(item.id, s, false)}
                 >
                   זה מתאים
@@ -231,7 +231,7 @@ function MissingRow({ item, store, title, main }: { item: ListItem; store: Store
       ) : null}
       <button
         type="button"
-        className="mt-2 text-sm font-semibold underline underline-offset-4"
+        className="mt-1 min-h-11 text-sm font-semibold underline underline-offset-4"
         onClick={() =>
           open({ kind: 'search', mode: { kind: 'substitute', itemId: item.id, storeId: store.id, query: seed } })
         }

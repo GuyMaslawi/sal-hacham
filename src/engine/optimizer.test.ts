@@ -65,6 +65,21 @@ describe('pricing', () => {
     expect(costFor(cottageA, 4, false, OPTS).total).toBe(20);
   });
 
+  it('combines deals for the cheapest total', () => {
+    const offer = { price: 9, promos: [
+      { minQty: 3, price: 20, club: false, end: '', desc: '' },
+      { minQty: 1, price: 7.5, club: false, end: '', desc: '' },
+    ] };
+    expect(costFor(offer, 4, false, OPTS).total).toBe(27.5);
+    expect(costFor(offer, 6, false, OPTS).total).toBe(40);
+    expect(costFor(offer, 2, false, OPTS).total).toBe(15);
+  });
+
+  it('applies a capped deal only as often as allowed', () => {
+    const offer = { price: 6.6, promos: [{ minQty: 2, price: 10, club: false, end: '', desc: '', maxQty: 2 }] };
+    expect(costFor(offer, 4, false, OPTS).total).toBe(23.2);
+  });
+
   it('points at a deal that one more unit would unlock', () => {
     expect(nextDeal(cottageA, 1, OPTS)?.minQty).toBe(2);
     expect(nextDeal(cottageA, 2, OPTS)).toBeNull();
@@ -82,7 +97,7 @@ describe('pricing', () => {
   });
 
   it('prices weighted items by the kilo', () => {
-    const cucumber = catalog.products.get('a:1502')!;
+    const cucumber = catalog.products.get('a:1502~kg')!;
     expect(costFor(cucumber.offers.get('a-1')!, 1.5, true, OPTS).total).toBe(10.35);
     expect(unitPrice(cucumber, 6.9)).toEqual({ value: 6.9, per: 'לק"ג' });
   });
@@ -100,9 +115,25 @@ describe('catalog', () => {
     expect(milk.manufacturer).toBe('תנובה');
   });
 
+  it('separates chain-numbered produce codes and products sold by weight', () => {
+    const c = buildCatalog(
+      [
+        data('a-1', [['7290000001524', 'בצל ירוק', '', 8.9, 1, 'u', 0]]),
+        data('b-1', [['7290000001524', 'מולוצנייה', '', 39, 1000, 'g', 1], ['7290000644783', 'פילה דג', '', 60, 1000, 'g', 1]]),
+        data('c-1', [['7290000644783', 'פילה דג', '', 25, 400, 'g', 0]]),
+      ],
+      stores,
+    );
+    expect(c.products.get('a:7290000001524')?.name).toBe('בצל ירוק');
+    expect(c.products.get('b:7290000001524~kg')?.name).toBe('מולוצנייה');
+    expect(c.products.get('7290000644783~kg')?.offers.has('b-1')).toBe(true);
+    expect(c.products.get('7290000644783')?.offers.has('c-1')).toBe(true);
+    expect(c.products.get('7290000644783')?.weighted).toBe(false);
+  });
+
   it('keeps in-house codes separate per chain', () => {
-    expect(catalog.products.has('a:1502')).toBe(true);
-    expect(catalog.products.has('b:88')).toBe(true);
+    expect(catalog.products.has('a:1502~kg')).toBe(true);
+    expect(catalog.products.has('b:88~kg')).toBe(true);
   });
 
   it('finds products by every word of the query, in any order', () => {
@@ -117,8 +148,8 @@ describe('catalog', () => {
   });
 
   it('suggests a similar product in a store that lacks the exact one', () => {
-    const cucumber = catalog.products.get('a:1502')!;
-    expect(suggestSubstitutes(catalog, cucumber, 'b-1').map((p) => p.pid)).toEqual(['b:88']);
+    const cucumber = catalog.products.get('a:1502~kg')!;
+    expect(suggestSubstitutes(catalog, cucumber, 'b-1').map((p) => p.pid)).toEqual(['b:88~kg']);
   });
 });
 
@@ -143,10 +174,10 @@ describe('compareBasket', () => {
   });
 
   it('uses the cheapest acceptable product in each store', () => {
-    const basket = [item('cucumber', ['a:1502', 'b:88'], 2)];
+    const basket = [item('cucumber', ['a:1502~kg', 'b:88~kg'], 2)];
     const c = compareBasket(basket, catalog, ['a-1', 'b-1'], OPTS);
     expect(c.quotes[0]).toMatchObject({ storeId: 'b-1', total: 11.8 });
-    expect(c.quotes[0].lines[0].pid).toBe('b:88');
+    expect(c.quotes[0].lines[0].pid).toBe('b:88~kg');
     expect(c.quotes[1]).toMatchObject({ storeId: 'a-1', total: 13.8 });
   });
 
@@ -185,6 +216,15 @@ describe('parseShoppingList', () => {
       { label: 'ביצים', qty: 2 },
       { label: 'עגבניות', qty: 4 },
       { label: 'יוגורט', qty: 3 },
+    ]);
+  });
+
+  it('keeps pack sizes in the name and reads kilos', () => {
+    expect(parseShoppingList('ביצים 12\n30 ביצים\n2 ק"ג עגבניות\nתפוחים חצי קילו')).toEqual([
+      { label: 'ביצים 12', qty: 1 },
+      { label: '30 ביצים', qty: 1 },
+      { label: 'עגבניות', qty: 2 },
+      { label: 'תפוחים', qty: 0.5 },
     ]);
   });
 

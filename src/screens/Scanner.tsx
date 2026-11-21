@@ -4,6 +4,7 @@ import { findByBarcode } from '../data/catalog';
 import { costFor, sizeLabel } from '../lib/pricing';
 import { storeTitle, useChosenStores, usePricingOptions } from '../lib/view';
 import { useApp } from '../state/app';
+import { buzz } from '../lib/actions';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
 import type { Product } from '../types';
@@ -45,14 +46,14 @@ export function Scanner() {
   const [manual, setManual] = useState('');
   const paused = useRef(false);
 
-  const lookup = useCallback(
-    (code: string) => {
-      paused.current = true;
-      navigator.vibrate?.(40);
-      setResult({ code, product: findByBarcode(catalog, code) });
-    },
-    [catalog],
-  );
+  // Read the catalog through a ref so a data refresh does not restart the camera.
+  const catalogRef = useRef(catalog);
+  catalogRef.current = catalog;
+  const lookup = useCallback((code: string) => {
+    paused.current = true;
+    buzz(40);
+    setResult({ code, product: findByBarcode(catalogRef.current, code) });
+  }, []);
 
   useEffect(() => {
     let stream: MediaStream | undefined;

@@ -1,7 +1,7 @@
 // Shared building blocks. The price tag is the one loud element; the rest stay plain.
 
 import { ArrowRight, CircleHelp, Minus, Plus, Trash2, X } from 'lucide-react';
-import { useEffect, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { create } from 'zustand';
 import { formatPrice } from '../lib/pricing';
 import { useNav } from '../state/nav';
@@ -32,7 +32,6 @@ export function PriceTag({
   return (
     <span
       dir="ltr"
-      aria-label={label ?? formatPrice(value)}
       className={cx(
         'inline-flex items-start gap-0.5 rounded-md font-display leading-[0.85] font-bold',
         scale.pad,
@@ -46,6 +45,8 @@ export function PriceTag({
         <span>{agorot}</span>
         <span className="font-sans text-[0.72em] leading-none font-bold">₪</span>
       </span>
+      {/* What screen readers say instead of the drawn digits. */}
+      <span className="sr-only">{label ?? formatPrice(value)}</span>
     </span>
   );
 }
@@ -223,14 +224,14 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={cx(
-        'relative h-8 w-14 shrink-0 rounded-full transition-colors',
+        'relative h-11 w-[4.5rem] shrink-0 rounded-full transition-colors',
         checked ? 'bg-ink' : 'bg-line',
       )}
     >
       <span
         className={cx(
-          'absolute top-1 size-6 rounded-full bg-surface transition-all',
-          checked ? 'start-7' : 'start-1',
+          'absolute top-1.5 size-8 rounded-full bg-surface transition-all',
+          checked ? 'start-[2.25rem]' : 'start-1.5',
         )}
       />
     </button>
@@ -240,6 +241,7 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 // ---- Overlays -----------------------------------------------------------------------------
 
 function useOverlay(onClose: () => void) {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', onKey);
@@ -250,6 +252,17 @@ function useOverlay(onClose: () => void) {
       document.body.style.overflow = previous;
     };
   }, [onClose]);
+  // Move focus into the panel when it opens, unless a field inside already took it, and give it
+  // back to where it was when the panel closes, so screen readers and keyboards follow along.
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    const panel = ref.current;
+    if (panel && !panel.contains(document.activeElement)) panel.focus({ preventScroll: true });
+    return () => {
+      if (before && document.contains(before)) before.focus({ preventScroll: true });
+    };
+  }, []);
+  return ref;
 }
 
 /** A panel that rises from the bottom edge, within thumb reach. */
@@ -267,9 +280,16 @@ export function Sheet({
   /** The way onward, kept in view at the bottom of the panel. */
   footer?: ReactNode;
 }) {
-  useOverlay(onClose);
+  const ref = useOverlay(onClose);
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={title}>
+    <div
+      ref={ref}
+      tabIndex={-1}
+      className="fixed inset-0 z-40 flex items-end justify-center outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
       <button type="button" aria-label="סגור" className="absolute inset-0 animate-fade bg-black/45" onClick={onClose} />
       <div className="frame relative max-h-[90dvh] animate-sheet overflow-y-auto overscroll-contain rounded-t-3xl bg-surface pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <div className="sticky top-0 z-10 flex items-start gap-2 bg-surface px-5 pt-5 pb-3">
@@ -297,9 +317,16 @@ export function Sheet({
 
 /** A full-height screen layered over the app (search, store picker, scanner). */
 export function FullScreen({ onClose, children, label }: { onClose: () => void; children: ReactNode; label: string }) {
-  useOverlay(onClose);
+  const ref = useOverlay(onClose);
   return (
-    <div className="overlay flex animate-page flex-col bg-paper" role="dialog" aria-modal="true" aria-label={label}>
+    <div
+      ref={ref}
+      tabIndex={-1}
+      className="overlay flex animate-page flex-col bg-paper outline-none"
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+    >
       {children}
     </div>
   );
@@ -348,7 +375,7 @@ export function Toaster() {
       {message ? (
         <div
           className={cx(
-            'pointer-events-auto flex max-w-full animate-sheet items-center gap-3 rounded-2xl bg-ink py-2.5 text-base font-semibold text-surface shadow-lg',
+            'flex max-w-full animate-sheet items-center gap-3 rounded-2xl bg-ink py-2.5 text-base font-semibold text-surface shadow-lg',
             action ? 'ps-5 pe-2' : 'px-5',
           )}
         >
@@ -356,7 +383,7 @@ export function Toaster() {
           {action ? (
             <button
               type="button"
-              className="min-h-11 shrink-0 rounded-xl bg-tag px-4 text-tag-ink"
+              className="pointer-events-auto min-h-11 shrink-0 rounded-xl bg-tag px-4 text-tag-ink"
               onClick={() => {
                 action.run();
                 dismiss();

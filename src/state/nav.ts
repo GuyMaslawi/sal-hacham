@@ -69,14 +69,19 @@ export const useNav = create<NavState>()((set, get) => ({
   },
 
   close: () => {
-    if (!get().stack.length) return;
+    // A quick double tap must not step back twice and leave the app.
+    if (!get().stack.length || backInFlight) return;
+    backInFlight = true;
     // The popstate handler below does the actual closing.
     window.history.back();
   },
 }));
 
+let backInFlight = false;
+
 /** Bring the screens in line with where the browser's history now stands. */
 function onPopState() {
+  backInFlight = false;
   const target = historyDepth();
   const { tab, stack } = useNav.getState();
   let excess = depthOf(tab, stack) - target;

@@ -5,6 +5,7 @@ import { create } from 'zustand';
 import { buildCatalog, EMPTY_CATALOG, type Catalog } from '../data/catalog';
 import {
   dropCachedStore,
+  OldBrowserError,
   fetchIndex,
   fetchStoreData,
   loadCachedIndex,
@@ -27,6 +28,8 @@ interface DataState {
   /** True once the on-device data has been read (the UI can render real content). */
   ready: boolean;
   refreshing: boolean;
+  /** A problem the shopper must act on that is not about the connection. */
+  problem: string | null;
 
   init(): Promise<void>;
   addStore(id: string): Promise<boolean>;
@@ -57,17 +60,26 @@ export const useData = create<DataState>()((set, get) => {
       return { loading };
     });
 
+  const chosen = (id: string) => useApp.getState().storeIds.includes(id);
+
   const download = async (store: StoreInfo): Promise<boolean> => {
     setLoading(store.id, 'loading');
     try {
       const data = await fetchStoreData(store);
+      // The shopper may have removed the store while it was downloading.
+      if (!chosen(store.id)) {
+        setLoading(store.id, null);
+        return true;
+      }
       void saveCachedStore(data);
       set((s) => ({ datasets: { ...s.datasets, [store.id]: data } }));
       setLoading(store.id, null);
       return true;
-    } catch {
-      // Keep whatever older copy we have; only flag an error when there is nothing to show.
-      setLoading(store.id, get().datasets[store.id] ? null : 'error');
+    } catch (err) {
+      if (err instanceof OldBrowserError) set({ problem: err.message });
+      // Keep whatever older copy we have; only flag an error when there is nothing to show,
+      // and never for a store that is no longer chosen.
+      setLoading(store.id, get().datasets[store.id] || !chosen(store.id) ? null : 'error');
       return false;
     }
   };
@@ -82,21 +94,28 @@ export const useData = create<DataState>()((set, get) => {
     catalog: EMPTY_CATALOG,
     ready: false,
     refreshing: false,
+    problem: null,
 
     async init() {
       if (initStarted) return;
       initStarted = true;
       const ids = useApp.getState().storeIds;
-      // Never let a slow or blocked device cache keep the app on its splash screen.
-      const [cachedIndex, cached] = await within(
-        Promise.all([loadCachedIndex(), Promise.all(ids.map(loadCachedStore))]),
-        4000,
-        [undefined, []],
+      // What is saved on the phone: applied whenever it arrives, even after the splash screen
+      // gave up waiting, unless fresher data from the network got there first.
+      const fromDevice = Promise.all([loadCachedIndex(), Promise.all(ids.map(loadCachedStore))]).then(
+        ([cachedIndex, cached]) => {
+          if (cachedIndex && !get().index) set({ index: { ...cachedIndex, geo: cachedIndex.geo ?? {} } });
+          const add: Record<string, StoreData> = {};
+          for (const d of cached) if (d && !get().datasets[d.id] && chosen(d.id)) add[d.id] = d;
+          if (Object.keys(add).length) {
+            set((s) => ({ datasets: { ...s.datasets, ...add } }));
+            rebuild();
+          }
+          return true;
+        },
       );
-      const datasets: Record<string, StoreData> = {};
-      for (const d of cached) if (d) datasets[d.id] = d;
-      set({ index: cachedIndex ? { ...cachedIndex, geo: cachedIndex.geo ?? {} } : null, datasets });
-      rebuild();
+      // Never let a slow or blocked device cache keep the app on its splash screen.
+      await within(fromDevice, 4000, false);
       set({ ready: true });
       await get().refresh();
     },
@@ -155,6 +174,12 @@ export const useData = create<DataState>()((set, get) => {
         }
         set({ index, indexError: null });
         void saveCachedIndex(index);
+
+        // A chosen store that no list knows any more (closed, or saved by a much older version)
+        // would silently take one of the eight places; let it go.
+        const known = new Set(index.stores.map((s) => s.id));
+        const app = useApp.getState();
+        if (app.storeIds.some((id) => !known.has(id))) app.setStoreIds(app.storeIds.filter((id) => known.has(id)));
 
         const byId = new Map(index.stores.map((s) => [s.id, s]));
         const stale = useApp
