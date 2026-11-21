@@ -63,6 +63,12 @@ export function HelpSheet() {
         המחירים והמבצעים נלקחים מהקבצים שהרשתות מחויבות לפרסם לפי חוק שקיפות המחירים, ומתעדכנים פעם ביום. ייתכנו
         הבדלים מהמחיר על המדף; המחיר בקופה הוא הקובע. קופונים ומבצעים שתלויים בסכום הקנייה לא נספרים.
       </p>
+      <p className="mt-3 text-sm text-muted">
+        האפליקציה לא אוספת עליך מידע: הרשימה וההגדרות נשמרות רק בטלפון.{' '}
+        <a href="privacy.html" className="inline-flex min-h-11 items-center font-semibold text-ink underline">
+          מדיניות פרטיות
+        </a>
+      </p>
     </Sheet>
   );
 }

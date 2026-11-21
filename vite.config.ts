@@ -22,6 +22,7 @@ export default defineConfig({
         scope: '.',
         display: 'standalone',
         orientation: 'portrait',
+        categories: ['shopping', 'food', 'lifestyle'],
         background_color: '#eef0f2',
         theme_color: '#ffd60a',
         icons: [

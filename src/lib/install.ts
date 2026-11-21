@@ -13,7 +13,22 @@ interface InstallState {
   installed: boolean;
 }
 
+/**
+ * Opened from the Google Play app. Android passes the app as the referrer on the first page
+ * only, so remember it for the rest of the visit.
+ */
+const fromPlayApp = (() => {
+  const now = document.referrer.startsWith('android-app://');
+  try {
+    if (now) sessionStorage.setItem('sal-play-app', '1');
+    return now || sessionStorage.getItem('sal-play-app') === '1';
+  } catch {
+    return now;
+  }
+})();
+
 const standalone = () =>
+  fromPlayApp ||
   window.matchMedia('(display-mode: standalone)').matches ||
   (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
