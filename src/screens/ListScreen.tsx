@@ -1,5 +1,5 @@
-import { ChevronLeft, ClipboardList, ScanBarcode, Search, Share2, Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
+import { ChevronDown, ChevronLeft, ClipboardList, ScanBarcode, Search, Share2, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { InstallHint } from '../components/InstallHint';
 import { Button, DealChip, LabeledIconButton, Price, PriceTag, QtyBadge, ScreenHeader, Stepper } from '../components/ui';
 import { searchProducts } from '../data/catalog';
@@ -24,6 +24,7 @@ const STAPLES = ['חלב', 'לחם', 'ביצים', "קוטג'", 'עגבניות'
 
 export function ListScreen() {
   const items = useApp((s) => s.items);
+  const textSize = useApp((s) => s.settings.textSize);
   const open = useNav((s) => s.open);
   const go = useNav((s) => s.go);
   const comparison = useComparison();
@@ -52,73 +53,182 @@ export function ListScreen() {
     return map;
   }, [comparison]);
 
-  return (
-    <div className="pb-4">
-      <ScreenHeader title="הרשימה שלי">
-        {items.length ? 'מה שצריך לקנות. ליד כל מוצר: כמה הוא עולה בסניפים שלך.' : null}
-      </ScreenHeader>
+  const searchBar = (
+    <div className="shrink-0 px-4 pt-1 pb-3">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}
+          className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl border-[1.5px] border-ink bg-surface px-4 text-start"
+        >
+          <Search className="size-5 shrink-0" strokeWidth={2.25} />
+          <span className="truncate text-muted">הוסף מוצר</span>
+        </button>
+        <LabeledIconButton label="ברקוד" onClick={() => open({ kind: 'scan' })}>
+          <ScanBarcode className="size-6" />
+        </LabeledIconButton>
+        <LabeledIconButton label="הדבקה" onClick={() => open({ kind: 'paste' })}>
+          <ClipboardList className="size-6" />
+        </LabeledIconButton>
+      </div>
+    </div>
+  );
 
-      <div className="sticky top-0 z-20 bg-paper px-4 pt-1 pb-3">
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}
-            className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl border-[1.5px] border-ink bg-surface px-4 text-start"
-          >
-            <Search className="size-5 shrink-0" strokeWidth={2.25} />
-            <span className="truncate text-muted">הוסף מוצר</span>
-          </button>
-          <LabeledIconButton label="ברקוד" onClick={() => open({ kind: 'scan' })}>
-            <ScanBarcode className="size-6" />
-          </LabeledIconButton>
-          <LabeledIconButton label="הדבקה" onClick={() => open({ kind: 'paste' })}>
-            <ClipboardList className="size-6" />
-          </LabeledIconButton>
-        </div>
+  if (items.length === 0) {
+    return (
+      <div className="pb-4">
+        <ScreenHeader title="הרשימה שלי" />
+        {searchBar}
+        <EmptyList />
+        <InstallHint />
+      </div>
+    );
+  }
+
+  // The page itself stays put: the products scroll inside their own box, so the search bar,
+  // the cheapest store and the way to the next step are always on screen.
+  return (
+    <div className="flex h-[calc(100dvh-4.75rem-env(safe-area-inset-bottom))] flex-col">
+      <div className="shrink-0">
+        {/* With large text the explanation would leave little room for the products themselves. */}
+        <ScreenHeader title="הרשימה שלי">
+          {textSize === 'normal' ? 'מה שצריך לקנות. ליד כל מוצר: כמה הוא עולה בסניפים שלך.' : null}
+        </ScreenHeader>
+      </div>
+      {searchBar}
+      <div className="shrink-0">
+        <BestStoreBanner />
       </div>
 
-      {items.length === 0 ? (
-        <EmptyList />
-      ) : (
-        <>
-          <BestStoreBanner />
-          <ul className="perforated mx-4 mt-3 rounded-2xl bg-surface">
-            {items.map((item) =>
-              item.pids.length === 0 ? (
-                <UnmatchedRow key={item.id} item={item} />
-              ) : (
-                <ListRow key={item.id} item={item} prices={prices.get(item.id)} />
-              ),
-            )}
-          </ul>
-
-          {comparison.pricedCount > 0 ? (
-            <Button className="mx-4 mt-3 w-[calc(100%-2rem)]" onClick={() => go('compare')}>
-              הבא: איפה הכי זול?
-              <ChevronLeft className="size-5" />
-            </Button>
-          ) : null}
-
-          <div className="mx-4 mt-2 flex flex-wrap">
-            <Button variant="quiet" className="flex-1 text-[0.95rem] whitespace-nowrap" onClick={() => void shareList()}>
-              <Share2 className="size-[1.1rem]" />
-              שתף רשימה
-            </Button>
-            <Button variant="quiet" className="flex-1 text-[0.95rem] whitespace-nowrap" onClick={clearListWithUndo}>
-              <Trash2 className="size-[1.1rem]" />
+      <ScrollBox
+        count={items.length}
+        actions={
+          // At the top of the box, so they never need a scroll to the end of a long list.
+          <>
+            <button
+              type="button"
+              onClick={() => void shareList()}
+              className="inline-flex min-h-11 items-center gap-1 rounded-full px-2.5 text-sm font-semibold whitespace-nowrap text-ink active:bg-sunken"
+            >
+              <Share2 className="size-4" />
+              שתף
+            </button>
+            <button
+              type="button"
+              onClick={clearListWithUndo}
+              className="inline-flex min-h-11 items-center gap-1 rounded-full px-2.5 text-sm font-semibold whitespace-nowrap text-alert active:bg-sunken"
+            >
+              <Trash2 className="size-4" />
               נקה הכול
-            </Button>
-          </div>
+            </button>
+          </>
+        }
+      >
+        <ul className="perforated">
+          {items.map((item) =>
+            item.pids.length === 0 ? (
+              <UnmatchedRow key={item.id} item={item} />
+            ) : (
+              <ListRow key={item.id} item={item} prices={prices.get(item.id)} />
+            ),
+          )}
+        </ul>
 
-          <p className="mt-1 px-6 text-sm text-muted">
+        <div className="border-t-[1.5px] border-dashed border-line px-2 pt-2 pb-3">
+          <p className="mt-1 px-2 text-sm text-muted">
             ליד כל מוצר: המחיר בסניף הזול ובסניף היקר מבין אלה שבחרת. המחירים לפי מה שהרשתות פרסמו; בקופה קובע
             המחיר שם.
           </p>
-        </>
-      )}
+          <InstallHint />
+        </div>
+      </ScrollBox>
 
-      <InstallHint />
+      {comparison.pricedCount > 0 ? (
+        <div className="shrink-0 px-4 pt-3 pb-3">
+          <Button className="w-full" onClick={() => go('compare')}>
+            הבא: איפה הכי זול?
+            <ChevronLeft className="size-5" />
+          </Button>
+        </div>
+      ) : (
+        <div className="h-3 shrink-0" />
+      )}
     </div>
+  );
+}
+
+/**
+ * The list's own scrolling area. It says how many products there are, shows when more are
+ * hidden below (with a button that scrolls, for anyone who does not think to swipe), and moves
+ * to a newly added product so it is seen.
+ */
+function ScrollBox({ count, actions, children }: { count: number; actions: ReactNode; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [moreBelow, setMoreBelow] = useState(false);
+  const [moreAbove, setMoreAbove] = useState(false);
+  const previousCount = useRef(count);
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setMoreBelow(el.scrollTop + el.clientHeight < el.scrollHeight - 8);
+    setMoreAbove(el.scrollTop > 8);
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // A product was added (usually from the search screen): bring the end of the list into view.
+    if (count > previousCount.current) {
+      const list = el.querySelector('ul');
+      const last = list?.lastElementChild as HTMLElement | null;
+      if (last) el.scrollTo({ top: last.offsetTop + last.offsetHeight - el.clientHeight + 16, behavior: 'smooth' });
+    }
+    previousCount.current = count;
+    measure();
+  }, [count, measure]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    if (el.firstElementChild) observer.observe(el.firstElementChild);
+    return () => observer.disconnect();
+  }, [measure]);
+
+  return (
+    <section
+      aria-label="המוצרים ברשימה"
+      className="relative mx-4 mt-3 flex min-h-[13rem] flex-1 flex-col overflow-hidden rounded-2xl bg-surface"
+    >
+      <div className="flex shrink-0 flex-wrap items-center gap-x-1 border-b-[1.5px] border-line ps-4 pe-1">
+        <p className="me-auto py-2 text-sm font-semibold text-muted">
+          {count === 1 ? 'מוצר אחד' : `${count} מוצרים`}
+        </p>
+        {actions}
+      </div>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={ref} onScroll={measure} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          <div>{children}</div>
+        </div>
+        {moreAbove ? (
+          <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-surface to-transparent" />
+        ) : null}
+        {moreBelow ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex h-16 items-end justify-center bg-gradient-to-t from-surface via-surface/80 to-transparent pb-2">
+            <button
+              type="button"
+              onClick={() => ref.current?.scrollBy({ top: ref.current.clientHeight * 0.8, behavior: 'smooth' })}
+              className="pointer-events-auto inline-flex min-h-10 items-center gap-1 rounded-full bg-ink px-4 text-sm font-semibold text-surface shadow"
+            >
+              <ChevronDown className="size-4" />
+              עוד מוצרים למטה
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
