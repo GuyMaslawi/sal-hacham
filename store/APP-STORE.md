@@ -25,7 +25,9 @@ npm run ios && npx cap open ios
 
 ### 2. חתימה
 
-ב-Xcode: **App** (בצד) → **Signing & Capabilities** → **Team**: בוחרים את החשבון שלך. החתימה האוטומטית תרשום את מזהה האפליקציה `io.github.guymaslawi.salhacham`.
+הצוות שלך (`JA985W9FZ2`) כבר מוגדר בפרויקט, והחתימה אוטומטית. צריך רק ש-Xcode יהיה מחובר לחשבון: **Xcode → Settings → Accounts**.
+
+שים לב: `MXRZ5UYMLJ` שמופיע בשם התעודה ("Apple Development: Guy Maslawi (MXRZ5UYMLJ)") הוא לא מזהה הצוות.
 
 ### 3. יצירת האפליקציה ב-App Store Connect
 
