@@ -1,13 +1,14 @@
-import { ChevronDown, ChevronRight, ShoppingCart } from 'lucide-react';
-import { useState } from 'react';
-import { Button, cx, DealChip, EmptyState, Price, PriceTag, QtyBadge, ScreenHeader } from '../components/ui';
+import { CircleAlert, CircleCheck, ChevronDown, ChevronRight, ShoppingCart } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Button, cx, DealChip, EmptyState, Price, PriceTag, QtyBadge, ScreenHeader, toast } from '../components/ui';
+import { suggestSubstitutes } from '../data/catalog';
 import type { Line, SplitPlan, StoreQuote } from '../engine/optimizer';
-import { formatPrice, promoLabel } from '../lib/pricing';
-import { freshness, storePlace, storeTitle, useComparison, useStoreLookup } from '../lib/view';
+import { costFor, formatPrice, promoLabel, sizeLabel } from '../lib/pricing';
+import { freshness, storePlace, storeTitle, useComparison, usePricingOptions, useStoreLookup } from '../lib/view';
 import { useApp } from '../state/app';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
-import type { ListItem } from '../types';
+import type { ListItem, StoreInfo } from '../types';
 
 export function CompareScreen() {
   const comparison = useComparison();
@@ -71,6 +72,8 @@ export function CompareScreen() {
           איך זה מחושב?
         </button>
       </p>
+
+      {quotes.length > 1 ? <Coverage quotes={quotes} /> : null}
 
       <ol className="mx-4 space-y-2.5">
         {quotes.map((q, rank) => (
@@ -194,10 +197,17 @@ function StoreCard({
           {hasEverything ? <span className="mb-1 block text-sm font-bold text-save">הזול ביותר שיש בו הכול</span> : null}
           <span className="block text-lg leading-tight font-bold">{storeTitle(store, index)}</span>
           <span className="mt-0.5 block truncate text-sm text-muted">{storePlace(store)}</span>
+          <CoverageChip missing={quote.missing.length} of={pricedCount} />
         </span>
         <span className="flex shrink-0 flex-col items-end gap-1.5">
           {/* The comparable number: this store's total plus an allowance for what it lacks. */}
-          <PriceTag value={quote.estimate} plain={!isBest} size={isBest ? 'md' : 'sm'} />
+          <PriceTag
+            value={quote.estimate}
+            plain={!isBest}
+            size={isBest ? 'md' : 'sm'}
+            label={quote.missing.length ? `${formatPrice(quote.estimate)}, כולל הערכה למה שחסר` : undefined}
+          />
+          {quote.missing.length > 0 ? <span className="text-xs font-semibold text-muted">כולל הערכה</span> : null}
           {!isBest && gap >= 0.05 ? <span className="num text-sm font-semibold text-alert">+{formatPrice(gap)}</span> : null}
           <span className="inline-flex items-center gap-0.5 text-sm font-semibold text-muted">
             {expanded ? 'הסתר' : 'מה בסל'}
@@ -207,17 +217,10 @@ function StoreCard({
       </button>
 
       {quote.missing.length > 0 ? (
-        <p className="px-4 pb-2 text-sm leading-snug">
-          <span className="font-semibold text-alert">
-            {quote.missing.length === 1 ? 'מוצר אחד חסר כאן.' : `${quote.missing.length} מוצרים חסרים כאן.`}
-          </span>{' '}
-          <Price value={quote.total} /> בקופה, ועוד בערך <Price value={quote.estimate - quote.total} /> כדי להשלים{' '}
-          {quote.missing.length === 1 ? 'אותו' : 'אותם'} במקום אחר.
-        </p>
+        <MissingHere quote={quote} store={store} items={items} showAll={expanded} />
       ) : null}
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 text-sm text-muted">
-        {quote.missing.length === 0 ? <span>{pricedCount === 1 ? 'המוצר נמכר כאן' : `כל ${pricedCount} המוצרים`}</span> : null}
         {quote.promoSaving >= 0.5 ? (
           <span>
             מבצעים חוסכים <Price value={quote.promoSaving} className="font-normal" />
@@ -238,16 +241,6 @@ function StoreCard({
       {expanded ? (
         <div className="border-t-[1.5px] border-dashed border-line px-4 pt-1 pb-4">
           <LineList lines={quote.lines} items={items} />
-          {quote.missing.length > 0 ? (
-            <ul className="mt-1">
-              {quote.missing.map((id) => (
-                <li key={id} className="flex justify-between gap-3 py-1.5 text-sm">
-                  <span className="min-w-0 truncate text-muted line-through">{items.get(id)?.label}</span>
-                  <span className="shrink-0 text-alert">לא נמכר כאן</span>
-                </li>
-              ))}
-            </ul>
-          ) : null}
           <Button variant={isBest ? 'tag' : 'outline'} className="mt-3 w-full" onClick={shopHere}>
             <ShoppingCart className="size-5" />
             אני קונה כאן
@@ -310,5 +303,124 @@ function SplitCard({ split, items }: { split: SplitPlan; items: Map<string, List
         })}
       </div>
     </section>
+  );
+}
+
+/** How many of the chosen stores sell the whole list, and in how many something is missing. */
+function Coverage({ quotes }: { quotes: StoreQuote[] }) {
+  const complete = quotes.filter((q) => q.missing.length === 0).length;
+  const partial = quotes.length - complete;
+  return (
+    <div className="mx-4 mb-3 flex flex-wrap gap-2">
+      <span
+        className={cx(
+          'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold',
+          complete ? 'bg-save/15 text-save' : 'bg-sunken text-muted',
+        )}
+      >
+        <CircleCheck className="size-4" />
+        {complete === 0
+          ? 'אין סניף שיש בו את כל הרשימה'
+          : complete === quotes.length
+            ? 'בכל הסניפים יש את כל הרשימה'
+            : complete === 1
+              ? 'בסניף אחד יש את כל הרשימה'
+              : `ב-${complete} סניפים יש את כל הרשימה`}
+      </span>
+      {partial > 0 ? (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-alert/10 px-3 py-1 text-sm font-bold text-alert">
+          <CircleAlert className="size-4" />
+          {partial === 1 ? 'בסניף אחד חסרים מוצרים' : `ב-${partial} סניפים חסרים מוצרים`}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** On every store card: does it sell the whole list, or how much of it is missing. */
+function CoverageChip({ missing, of }: { missing: number; of: number }) {
+  return missing === 0 ? (
+    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-save/15 px-2.5 py-0.5 text-sm font-bold text-save">
+      <CircleCheck className="size-4" />
+      {of === 1 ? 'המוצר נמכר כאן' : `יש את כל ${of} המוצרים`}
+    </span>
+  ) : (
+    <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-alert/10 px-2.5 py-0.5 text-sm font-bold text-alert">
+      <CircleAlert className="size-4" />
+      {missing === 1 ? `חסר מוצר אחד מתוך ${of}` : `חסרים ${missing} מתוך ${of}`}
+    </span>
+  );
+}
+
+/**
+ * What this store does not sell, on the card itself rather than hidden in its details. A store
+ * often lacks only the exact barcode (another brand of fresh chicken, its own bread), so the
+ * closest product it does sell is offered: one tap counts it here instead.
+ */
+function MissingHere({
+  quote,
+  store,
+  items,
+  showAll,
+}: {
+  quote: StoreQuote;
+  store: StoreInfo;
+  items: Map<string, ListItem>;
+  showAll: boolean;
+}) {
+  const shown = showAll ? quote.missing : quote.missing.slice(0, 3);
+  const more = quote.missing.length - shown.length;
+  return (
+    <div className="mx-4 mb-3 rounded-xl bg-sunken p-3">
+      <p className="text-sm leading-snug">
+        כאן תשלם <Price value={quote.total} /> על מה שיש. על מה שחסר הוספנו בערך{' '}
+        <Price value={quote.estimate - quote.total} /> לפי המחיר בסניפים האחרים, כדי שההשוואה תהיה הוגנת.
+      </p>
+      <ul className="mt-2 space-y-2">
+        {shown.map((id) => {
+          const item = items.get(id);
+          return item ? <MissingItem key={id} item={item} store={store} /> : null;
+        })}
+      </ul>
+      {more > 0 ? <p className="mt-2 text-sm text-muted">ועוד {more}. לחיצה על "מה בסל" מציגה את כולם.</p> : null}
+    </div>
+  );
+}
+
+function MissingItem({ item, store }: { item: ListItem; store: StoreInfo }) {
+  const catalog = useData((s) => s.catalog);
+  const opts = usePricingOptions();
+  const main = item.pids[0] ? catalog.products.get(item.pids[0]) : undefined;
+  const instead = useMemo(() => (main ? suggestSubstitutes(catalog, main, store.id, 1)[0] : undefined), [catalog, main, store.id]);
+  const offer = instead?.offers.get(store.id);
+  return (
+    <li className="text-sm">
+      <p className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 font-medium">
+          <QtyBadge qty={item.qty} />
+          {item.label}
+        </span>
+        <span className="shrink-0 font-semibold text-alert">לא נמכר כאן</span>
+      </p>
+      {instead && offer ? (
+        <div className="mt-1.5 flex items-center gap-2 rounded-lg bg-surface py-1.5 ps-2.5 pe-1.5">
+          <span className="min-w-0 flex-1 leading-snug">
+            <span className="text-muted">יש כאן דומה: </span>
+            {instead.name} <span className="text-muted">{sizeLabel(instead)}</span>{' '}
+            <Price value={costFor(offer, item.qty, instead.weighted, opts).total} className="text-ink" />
+          </span>
+          <Button
+            variant="outline"
+            className="min-h-10 shrink-0 rounded-full px-3 text-sm"
+            onClick={() => {
+              useApp.getState().attachProduct(item.id, instead, false);
+              toast('התחליף נוסף. הסניף הזה מחושב עכשיו עם המוצר הדומה');
+            }}
+          >
+            זה מתאים
+          </Button>
+        </div>
+      ) : null}
+    </li>
   );
 }

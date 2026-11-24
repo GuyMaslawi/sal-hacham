@@ -1,11 +1,12 @@
-# Every morning: download the chains' price files, rebuild the app with the fresh data and
-# publish it to GitHub Pages. Free on a public repository.
+# Every hour: download the chains' price files, rebuild the app with the fresh data and
+# publish it to GitHub Pages. Free on a public repository; a run takes about five minutes.
 name: Sync prices and deploy
 
 on:
   schedule:
-    # 04:30 UTC is 06:30 or 07:30 in Israel, after the chains publish their nightly files.
-    - cron: '30 4 * * *'
+    # Chains publish new full price files during the day as well as at night. Minute 17, not 0:
+    # GitHub delays or drops scheduled runs at the top of the hour, when it is busiest.
+    - cron: '17 * * * *'
   workflow_dispatch:
   push:
     branches: [main]

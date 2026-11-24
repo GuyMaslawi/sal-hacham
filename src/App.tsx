@@ -43,7 +43,8 @@ export default function App() {
     const maybeRefresh = () => {
       const missingIndex = !useData.getState().index;
       if (document.visibilityState !== 'visible') return;
-      if (missingIndex || Date.now() - lastRefresh > 60 * 60 * 1000) {
+      // The site takes in new price files every hour; a quarter of an hour keeps the phone close.
+      if (missingIndex || Date.now() - lastRefresh > 15 * 60 * 1000) {
         lastRefresh = Date.now();
         void useData.getState().refresh();
       }
