@@ -21,6 +21,12 @@ export const tokens = (s: string) => normalize(s).split(' ').filter(Boolean);
 /** Digits only, no leading zeros: the form barcodes are stored in. */
 export const normalizeCode = (s: string) => s.replace(/\D/g, '').replace(/^0+/, '');
 
+/**
+ * Remove invisible right-to-left marks. WhatsApp puts them in copied messages and Apple's speech
+ * recognizer starts every Hebrew phrase with one; left in, "‏שתי עגבניות" would not read as 2.
+ */
+export const stripDirectionMarks = (s: string) => s.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, '');
+
 export interface ParsedLine {
   label: string;
   qty: number;
@@ -32,16 +38,20 @@ export interface ParsedLine {
  */
 export function parseShoppingList(text: string): ParsedLine[] {
   const out: ParsedLine[] = [];
-  for (const rawLine of text.split(/[\n,;]+/)) {
-    let line = rawLine
-      .replace(/^[\s\-–•*·▪◦☐☑✓✔✅⬜🔲]+/u, '')
-      .replace(/^\d+[.)]\s+/, '')
-      .trim();
-    if (!line) continue;
+  for (const rawLine of stripDirectionMarks(text).split(/[\n,;]+/)) {
+    let line = spokenToWritten(
+      rawLine
+        .replace(/^[\s\-–•*·▪◦☐☑✓✔✅⬜🔲]+/u, '')
+        .replace(/^\d+[.)]\s+/, '')
+        .trim(),
+    );
+    // Headings, not products: "רשימה לסופר:", "ירקות:", "רשימת קניות".
+    if (!line || /:$/.test(line) || HEADING.test(line)) continue;
     let qty = 1;
 
     const KILO = `(?:ק"ג|ק״ג|קג|קילו)`;
-    const kiloLead = new RegExp(`^(\\d+(?:[.,]\\d+)?|חצי)\\s*${KILO}\\s+`).exec(line);
+    // "קילו עגבניות" said without a number means one kilo.
+    const kiloLead = new RegExp(`^(\\d+(?:[.,]\\d+)?|חצי)?\\s*${KILO}\\s+`).exec(line);
     const kiloTrail = new RegExp(`\\s+(\\d+(?:[.,]\\d+)?|חצי)\\s*${KILO}$`).exec(line);
     const multiplier = /\s*[x×*]\s*(\d{1,2})$/i.exec(line) ?? /^(\d{1,2})\s*[x×*]\s*/i.exec(line) ?? /^[x×*]\s*(\d{1,2})\s+/i.exec(line);
     const unitsSuffix = /\s*[-–:]?\s*(\d{1,2})\s*(?:יח'?|יחידות|חבילות|אריזות|בקבוקים|קרטונים)$/.exec(line);
@@ -49,7 +59,7 @@ export function parseShoppingList(text: string): ParsedLine[] {
     // pack size, not twelve or thirty cartons.
     const leading = /^([1-9])\s+(?=\D)/.exec(line);
     const trailing = /\s+([1-9])$/.exec(line);
-    const kilos = (m: RegExpExecArray) => (m[1] === 'חצי' ? 0.5 : parseFloat(m[1].replace(',', '.')));
+    const kilos = (m: RegExpExecArray) => (!m[1] ? 1 : m[1] === 'חצי' ? 0.5 : parseFloat(m[1].replace(',', '.')));
 
     if (kiloLead) {
       qty = kilos(kiloLead);
@@ -71,8 +81,89 @@ export function parseShoppingList(text: string): ParsedLine[] {
       line = line.slice(0, trailing.index);
     }
 
-    const label = line.replace(/\s+/g, ' ').replace(/[\s\-–:]+$/, '').trim();
+    const label = line
+      .replace(/\s+/g, ' ')
+      .replace(/[\s\-–:.]+$/, '')
+      .trim();
     if (label) out.push({ label, qty: Math.min(Math.max(Math.round(qty * 2) / 2, 0.5), 99) });
   }
   return out;
+}
+
+const HEADING = /^(?:רשימת|רשימה)\s*(?:קניות|לסופר|למכולת)?$|^קניות$/;
+
+const NUMBER_WORDS: Record<string, number> = {
+  אחד: 1,
+  אחת: 1,
+  שניים: 2,
+  שתיים: 2,
+  שני: 2,
+  שתי: 2,
+  שלוש: 3,
+  שלושה: 3,
+  ארבע: 4,
+  ארבעה: 4,
+  חמש: 5,
+  חמישה: 5,
+  שש: 6,
+  שישה: 6,
+  שבע: 7,
+  שבעה: 7,
+  שמונה: 8,
+  תשע: 9,
+  תשעה: 9,
+  עשר: 10,
+  עשרה: 10,
+};
+const NUMBER_WORD = Object.keys(NUMBER_WORDS).join('|');
+
+// What people say before an item when they dictate a list: "וגם חלב", "תוסיף לחם".
+const SPOKEN_LEAD = /^(?:וגם|גם|ועוד|עוד|תוסיף|תוסיפי|תרשום|תרשמי|צריך|צריכים|צריכה|לקנות|קנה|קני)\s+/;
+// "2 חבילות קוטג'" is two of the cottage cheese; the pack word is not part of the product.
+const PACK_WORD = /^(?:חבילות|חבילה|בקבוקים|בקבוק|יחידות|יחידה|אריזות|אריזה|קרטונים|קרטון|פחיות|פחית)\s+(?:של\s+)?/;
+
+/** Write spoken quantities as digits: "שני קילו עגבניות" → "2 קילו עגבניות", "חלב שתיים" → "חלב 2". */
+function spokenToWritten(line: string): string {
+  let s = line;
+  for (let i = 0; i < 3 && SPOKEN_LEAD.test(s); i++) s = s.replace(SPOKEN_LEAD, '');
+  // "ושני לחמים" in the middle of a dictated list.
+  s = s.replace(new RegExp(`^ו(?=(?:${NUMBER_WORD})\\s)`), '');
+  s = s.replace(new RegExp(`^(${NUMBER_WORD})\\s+`), (_, w: string) => `${NUMBER_WORDS[w]} `);
+  s = s.replace(new RegExp(`\\s+(${NUMBER_WORD})$`), (_, w: string) => ` ${NUMBER_WORDS[w]}`);
+  // "קילו וחצי עגבניות", "2 קילו וחצי".
+  s = s.replace(/^(\d+\s*)?(קילו|ק"ג)\s+וחצי\s+/, (_, n: string | undefined) => `${(n ? Number(n) : 1) + 0.5} קילו `);
+  // After a number: "2 חבילות קוטג'" → "2 קוטג'".
+  return s.replace(new RegExp(`^(\\d+)\\s+${PACK_WORD.source.slice(1)}`), '$1 ');
+}
+
+/**
+ * Tidy text read from a photo of a list. Character recognition leaves stray marks (ruled lines
+ * read as "|", specks read as single letters) and screenshots bring in times and headings.
+ * Keeps only lines that look like words.
+ */
+export function cleanRecognizedText(text: string): string {
+  const keep: string[] = [];
+  for (const raw of text.split('\n')) {
+    const line = raw
+      .replace(/\b\d{1,2}:\d{2}\b/g, ' ')
+      .replace(/[|\\[\]{}<>_~=—“”„©®°§¶]+/g, ' ')
+      // Words the reader glued together: a final letter (ם ן ך ף ץ) only ends a word, and a
+      // number next to a word is its own token ("שמןזית" → "שמן זית", "2קוטג'" → "2 קוטג'").
+      .replace(/([ךםןףץ])(?=[א-ת])/g, '$1 ')
+      .replace(/(\d)(?=[א-ת])/g, '$1 ')
+      .replace(/([א-ת])(?=\d)/g, '$1 ')
+      .split(/\s+/)
+      // ".1" next to an item is usually a misread mark; keep the number.
+      .map((t) => t.replace(/^[.,'"]+(?=\d)/, ''))
+      // A lone letter or a run of zeros is almost always a speck, not part of an item.
+      .filter((t) => t && !/^[א-ת]$/.test(t) && !/^0+$/.test(t) && !/^[^\p{L}\p{N}%]+$/u.test(t))
+      .join(' ')
+      .replace(/^[.,'"\-–:;]+|[.,\-–:;]+$/g, '')
+      .trim();
+    const hebrew = (line.match(/[א-ת]/g) ?? []).length;
+    const visible = line.replace(/\s/g, '').length;
+    if (hebrew < 2 || hebrew / visible < 0.5 || HEADING.test(line)) continue;
+    keep.push(line);
+  }
+  return keep.join('\n');
 }

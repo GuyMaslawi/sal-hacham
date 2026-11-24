@@ -8,7 +8,7 @@ import { HelpSheet } from './screens/HelpSheet';
 import { ItemSheet } from './screens/ItemSheet';
 import { ListScreen } from './screens/ListScreen';
 import { NearbyScreen } from './screens/NearbyScreen';
-import { PasteSheet } from './screens/PasteSheet';
+import { AddListSheet } from './screens/AddListSheet';
 import { Scanner } from './screens/Scanner';
 import { SearchScreen } from './screens/SearchScreen';
 import { ShopScreen } from './screens/ShopScreen';
@@ -92,8 +92,8 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
     case 'search':
       // A new key per target keeps the query from leaking between different lines.
       return <SearchScreen key={JSON.stringify(overlay.mode)} mode={overlay.mode} />;
-    case 'paste':
-      return <PasteSheet />;
+    case 'addList':
+      return <AddListSheet start={overlay.start} photo={overlay.photo} clipboard={overlay.clipboard} />;
     case 'scan':
       return <Scanner />;
     case 'item':

@@ -91,7 +91,7 @@ Sal Hacham compares a shopping list across Israeli supermarket branches, using t
 
 No account or login is needed. To try it: tap "בחר עיר" (Choose city), pick "תל אביב - יפו", tap the yellow "המשך" button, then add products from the quick-start buttons (for example "חלב") and open the "השוואה" (Compare) tab to see the basket total in every branch.
 
-Native features: the system share sheet for sharing the list, location (used only on the device to suggest nearby branches, never sent anywhere), haptic feedback while shopping, barcode scanning with the camera, and offline use: the app and the chosen branches' prices are stored on the device.
+Native features: the system share sheet for sharing the list, location (used only on the device to suggest nearby branches, never sent anywhere), haptic feedback while shopping, barcode scanning with the camera, dictating the list with Apple's speech recognizer (the microphone is on only while the "דיבור" panel shows it is listening), reading a photographed list on the device itself, and offline use: the app and the chosen branches' prices are stored on the device.
 
 The app collects no data and has no ads, analytics or tracking.
 ```

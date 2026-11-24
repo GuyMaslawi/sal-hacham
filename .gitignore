@@ -6,3 +6,6 @@ public/data
 .DS_Store
 .local-data
 dist-ios
+
+# On-phone text recognizer, copied from node_modules by scripts/copy-ocr.mjs
+public/ocr/

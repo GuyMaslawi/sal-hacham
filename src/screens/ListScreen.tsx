@@ -1,9 +1,11 @@
-import { ChevronDown, ChevronLeft, ClipboardList, ScanBarcode, Search, Share2, Trash2 } from 'lucide-react';
+import { Camera, ChevronDown, ChevronLeft, ClipboardList, Mic, ScanBarcode, Search, Share2, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { InstallHint } from '../components/InstallHint';
-import { Button, DealChip, LabeledIconButton, Price, PriceTag, QtyBadge, ScreenHeader, Stepper } from '../components/ui';
+import { Button, DealChip, Price, PriceTag, QtyBadge, ScreenHeader, Stepper, cx, toast } from '../components/ui';
 import { searchProducts } from '../data/catalog';
 import { changeQty, clearListWithUndo, shareList } from '../lib/actions';
+import { startList } from '../lib/listInput';
+import { canDictate } from '../lib/speech';
 import { costFor, promoLabel } from '../lib/pricing';
 import { qtyUnit, storeTitle, useComparison, usePricingOptions, useStoreLookup } from '../lib/view';
 import { stepFor, useApp } from '../state/app';
@@ -25,7 +27,6 @@ const STAPLES = ['חלב', 'לחם', 'ביצים', "קוטג'", 'עגבניות'
 export function ListScreen() {
   const items = useApp((s) => s.items);
   const textSize = useApp((s) => s.settings.textSize);
-  const open = useNav((s) => s.open);
   const go = useNav((s) => s.go);
   const comparison = useComparison();
 
@@ -53,26 +54,7 @@ export function ListScreen() {
     return map;
   }, [comparison]);
 
-  const searchBar = (
-    <div className="shrink-0 px-4 pt-1 pb-3">
-      <div className="flex items-center gap-1">
-        <button
-          type="button"
-          onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}
-          className="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-2xl border-[1.5px] border-ink bg-surface px-4 text-start"
-        >
-          <Search className="size-5 shrink-0" strokeWidth={2.25} />
-          <span className="truncate text-muted">הוסף מוצר</span>
-        </button>
-        <LabeledIconButton label="ברקוד" onClick={() => open({ kind: 'scan' })}>
-          <ScanBarcode className="size-6" />
-        </LabeledIconButton>
-        <LabeledIconButton label="הדבקה" onClick={() => open({ kind: 'paste' })}>
-          <ClipboardList className="size-6" />
-        </LabeledIconButton>
-      </div>
-    </div>
-  );
+  const searchBar = <AddBar />;
 
   if (items.length === 0) {
     return (
@@ -98,6 +80,7 @@ export function ListScreen() {
       {searchBar}
       <div className="shrink-0">
         <BestStoreBanner />
+        <ConfirmAllBanner />
       </div>
 
       <ScrollBox
@@ -238,7 +221,8 @@ function EmptyList() {
     <div className="px-5 pt-6">
       <h2 className="font-display text-4xl leading-none font-bold">מתחילים מרשימה</h2>
       <p className="mt-2 text-muted">
-        הוסף מה שצריך לקנות, ומיד תראה כמה כל מוצר עולה בכל אחד מהסניפים שבחרת.
+        הקלד מוצר, אמור את הרשימה בקול, צלם אותה או הדבק אותה מוואטסאפ, בכפתורים שלמעלה. מיד תראה כמה כל מוצר
+        עולה בכל אחד מהסניפים שבחרת.
       </p>
 
       <h3 className="mt-6 mb-2 text-sm font-semibold text-muted">התחלה מהירה</h3>
@@ -254,24 +238,97 @@ function EmptyList() {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
 
-      <div className="mt-7 space-y-2">
-        <Button className="w-full" onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}>
-          <Search className="size-5" />
-          חפש מוצר
-        </Button>
-        {/* Wraps to one button per line when the text is large. */}
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="min-w-[45%] flex-1 whitespace-nowrap" onClick={() => open({ kind: 'paste' })}>
-            <ClipboardList className="size-5" />
-            הדבק רשימה
-          </Button>
-          <Button variant="outline" className="min-w-[45%] flex-1 whitespace-nowrap" onClick={() => open({ kind: 'scan' })}>
-            <ScanBarcode className="size-5" />
-            סרוק ברקוד
-          </Button>
-        </div>
+/**
+ * Every way to add products, always in the same place: type a name, say the list, photograph
+ * it, paste it, or scan a barcode. Each button names what it does, so nobody has to guess.
+ */
+function AddBar() {
+  const open = useNav((s) => s.open);
+  const textSize = useApp((s) => s.settings.textSize);
+  const voice = canDictate();
+  return (
+    <div className="shrink-0 px-4 pt-1 pb-3">
+      <button
+        type="button"
+        onClick={() => open({ kind: 'search', mode: { kind: 'add' } })}
+        className="flex min-h-14 w-full items-center gap-3 rounded-2xl border-[1.5px] border-ink bg-surface px-4 text-start"
+      >
+        <Search className="size-5 shrink-0" strokeWidth={2.25} />
+        <span className="truncate text-muted">הקלד שם של מוצר</span>
+      </button>
+      {/* Larger text gets two buttons per row, so no label is cut. */}
+      <div className={cx('mt-2 grid gap-2', textSize !== 'normal' ? 'grid-cols-2' : voice ? 'grid-cols-4' : 'grid-cols-3')}>
+        {voice ? (
+          <AddWay label="דיבור" onClick={() => startList('voice')}>
+            <Mic className="size-5" />
+          </AddWay>
+        ) : null}
+        <AddWay label="צילום" onClick={() => startList('photo')}>
+          <Camera className="size-5" />
+        </AddWay>
+        <AddWay label="הדבקה" onClick={() => startList('paste')}>
+          <ClipboardList className="size-5" />
+        </AddWay>
+        <AddWay label="ברקוד" onClick={() => open({ kind: 'scan' })}>
+          <ScanBarcode className="size-5" />
+        </AddWay>
       </div>
+    </div>
+  );
+}
+
+function AddWay({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex min-h-12 min-w-0 items-center justify-center gap-1 rounded-xl border-[1.5px] border-line bg-surface px-1 font-semibold whitespace-nowrap active:bg-sunken [&>svg]:shrink-0"
+    >
+      {children}
+      <span className="text-[0.9rem]">{label}</span>
+    </button>
+  );
+}
+
+/**
+ * After a list was said, photographed or pasted, each line waits for its product. When several
+ * do, one tap takes the suggested product for all of them (and can be undone).
+ */
+function ConfirmAllBanner() {
+  const items = useApp((s) => s.items);
+  const catalog = useData((s) => s.catalog);
+  const waiting = useMemo(
+    () =>
+      items
+        .filter((i) => i.pids.length === 0)
+        .map((item) => ({ item, guess: searchProducts(catalog, item.label, { limit: 1 })[0] }))
+        .filter((w) => w.guess),
+    [items, catalog],
+  );
+  if (waiting.length < 2) return null;
+
+  const confirmAll = () => {
+    const { attachProduct } = useApp.getState();
+    const before = new Map(waiting.map((w) => [w.item.id, w.item]));
+    for (const { item, guess } of waiting) attachProduct(item.id, guess, true);
+    toast(`${waiting.length} מוצרים אושרו לפי ההצעות`, {
+      label: 'בטל',
+      run: () => useApp.setState((s) => ({ items: s.items.map((i) => before.get(i.id) ?? i) })),
+    });
+  };
+
+  return (
+    <div className="mx-4 mt-3 flex items-center gap-3 rounded-2xl bg-tag p-3 ps-4 text-tag-ink">
+      <p className="min-w-0 flex-1 text-sm leading-snug font-semibold">
+        {waiting.length} מוצרים מחכים לאישור. ההצעה שלנו מופיעה בכל שורה.
+      </p>
+      <Button className="min-h-11 shrink-0 px-4" onClick={confirmAll}>
+        אשר הכול
+      </Button>
     </div>
   );
 }

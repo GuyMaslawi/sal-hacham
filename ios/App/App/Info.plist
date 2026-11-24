@@ -31,7 +31,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>המצלמה משמשת רק לסריקת ברקוד של מוצרים כדי להוסיף אותם לרשימה. שום תמונה לא נשמרת ולא נשלחת.</string>
+	<string>המצלמה משמשת לסריקת ברקוד ולצילום רשימת קניות. התמונה נקראת בטלפון עצמו, לא נשמרת ולא נשלחת.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>המיקרופון משמש רק כשאתה לוחץ "דיבור" כדי לומר את רשימת הקניות. ההקלטה לא נשמרת.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>זיהוי הדיבור של Apple הופך את מה שאמרת לשורות ברשימת הקניות.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>המיקום משמש רק בטלפון, כדי למצוא את הסניפים הקרובים אליך. הוא לא נשמר ולא נשלח לשום מקום.</string>
 	<key>UIApplicationSceneManifest</key>

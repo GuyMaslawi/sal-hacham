@@ -17,9 +17,15 @@ export type SearchMode =
   /** Pick a stand-in for a line in a store that lacks the exact product. */
   | { kind: 'substitute'; itemId: string; storeId: string; query: string };
 
+export type ListStart = 'voice' | 'photo' | 'paste';
+
 export type Overlay =
   | { kind: 'search'; mode: SearchMode }
-  | { kind: 'paste' }
+  /**
+   * Several products at once: said out loud, read from a photo, pasted or typed. `photo` is the
+   * picture already chosen; `clipboard` is a paste already asked for (it must start on the tap).
+   */
+  | { kind: 'addList'; start: ListStart; photo?: Blob; clipboard?: Promise<string> }
   | { kind: 'scan' }
   | { kind: 'item'; itemId: string }
   /** The manual store picker. `quick` sends a chosen city on to the suggestions. */

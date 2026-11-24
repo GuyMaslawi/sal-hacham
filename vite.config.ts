@@ -35,9 +35,18 @@ export default defineConfig({
         // The app shell is cached for offline use. Price data is not precached: it is large,
         // changes daily, and the app keeps the chosen stores in IndexedDB instead.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm}'],
-        globIgnores: ['data/**'],
+        // The photo reader (public/ocr, ~5 MB) is downloaded only by those who photograph a list,
+        // and then kept so it also works offline.
+        globIgnores: ['data/**', 'ocr/**'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        navigateFallbackDenylist: [/\/data\//],
+        navigateFallbackDenylist: [/\/data\//, /\/ocr\//],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.includes('/ocr/'),
+            handler: 'CacheFirst',
+            options: { cacheName: 'ocr', expiration: { maxEntries: 10 } },
+          },
+        ],
       },
     }),
   ],
