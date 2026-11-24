@@ -49,7 +49,7 @@ export function StoresScreen() {
                 <p
                   className={cx(
                     'mt-0.5 flex flex-wrap gap-x-3 text-sm',
-                    state === 'error' || age.stale ? 'text-alert' : 'text-muted',
+                    state === 'error' ? 'text-alert' : 'text-muted',
                   )}
                 >
                   {state === 'loading' ? (
@@ -60,7 +60,9 @@ export function StoresScreen() {
                     'ההורדה נכשלה. בדוק את החיבור ורענן'
                   ) : (
                     <>
-                      <span>{age.text}</span>
+                      {/* Shoppers see when prices are today's; an older date only worries them, and
+                          keeping every store current is the sync's job (hourly), not theirs. */}
+                      {age.today ? <span>{age.text}</span> : null}
                       <span className="text-muted">
                         <span className="num">{s.itemCount.toLocaleString('en-US')}</span> מוצרים
                       </span>

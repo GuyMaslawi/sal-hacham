@@ -119,7 +119,9 @@ export function compareBasket(
       promoSaving: round2(promoSaving),
     };
   });
-  quotes.sort((a, b) => a.estimate - b.estimate || a.missing.length - b.missing.length);
+  // A store that sells nothing from the list is never "the cheapest", whatever its estimate.
+  const sellsNothing = (q: StoreQuote) => (q.lines.length === 0 ? 1 : 0);
+  quotes.sort((a, b) => sellsNothing(a) - sellsNothing(b) || a.estimate - b.estimate || a.missing.length - b.missing.length);
 
   return {
     quotes,

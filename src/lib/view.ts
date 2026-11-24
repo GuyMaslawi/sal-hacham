@@ -57,14 +57,14 @@ export function storePlace(store: StoreInfo): string {
 }
 
 /** How old a price list is, in words a shopper would use. */
-export function freshness(updatedAt: string, today = todayInIsrael()): { text: string; stale: boolean } {
+export function freshness(updatedAt: string, today = todayInIsrael()): { text: string; stale: boolean; today: boolean } {
   const day = updatedAt.slice(0, 10);
   const time = updatedAt.slice(11, 16);
-  if (!day) return { text: 'תאריך עדכון לא ידוע', stale: true };
+  if (!day) return { text: 'תאריך עדכון לא ידוע', stale: true, today: false };
   const days = Math.round((Date.parse(today) - Date.parse(day)) / 86_400_000);
-  if (days <= 0) return { text: `מחירים מהיום ${time}`, stale: false };
-  if (days === 1) return { text: `מחירים מאתמול ${time}`, stale: false };
-  return { text: `מחירים מלפני ${days} ימים`, stale: days > 2 };
+  if (days <= 0) return { text: `מחירים מהיום ${time}`, stale: false, today: true };
+  if (days === 1) return { text: `מחירים מאתמול ${time}`, stale: false, today: false };
+  return { text: `מחירים מלפני ${days} ימים`, stale: days > 2, today: false };
 }
 
 export const qtyUnit = (weighted: boolean) => (weighted ? 'ק"ג' : undefined);
