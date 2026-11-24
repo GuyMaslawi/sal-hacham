@@ -94,6 +94,7 @@ run(process.execPath, [
   '--chains', chains.join(','),
   '--out', '.local-data/data',
   '--fallback', '.local-data/prev/data',
+  ...(hourly ? ['--reuse'] : []),
 ]);
 rmSync('.local-data/prev', { recursive: true, force: true });
 

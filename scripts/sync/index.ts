@@ -6,7 +6,11 @@
 //
 // Usage: npm run sync -- [--chains shufersal,carrefour] [--cities "חיפה,נשר"] [--limit 5]
 //                        [--out public/data] [--concurrency 6] [--min-stores 400]
-//                        [--fallback <dir>] [--previous-url <url>]
+//                        [--fallback <dir>] [--previous-url <url>] [--reuse]
+//
+// --reuse (the hourly job on Guy's Mac): a store whose chain has published no new file since the
+// run that produced --fallback is copied from there instead of downloaded and parsed again.
+// Which files built each store is kept in <out>/sources.json for the next run.
 //
 // Stores this run could not produce (a portal is down, refuses connections from outside Israel,
 // or has not published yet today) are kept from an earlier run while they are recent enough:
@@ -42,6 +46,14 @@ interface Args {
   minStores: number;
   fallback: string | null;
   previousUrl: string | null;
+  reuse: boolean;
+}
+
+/** Which chain files built a store, and on which day (promotions are filtered by the day). */
+interface Source {
+  src: string;
+  day: string;
+  pv: number;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -59,6 +71,7 @@ function parseArgs(argv: string[]): Args {
     minStores: Number(get('min-stores') ?? 1),
     fallback: get('fallback') ?? null,
     previousUrl: get('previous-url') ?? null,
+    reuse: argv.includes('--reuse'),
   };
 }
 
@@ -83,7 +96,34 @@ const stampToIso = (s: string) =>
 
 const newest = (files: RemoteFile[]) => files.reduce((a, b) => (b.stamp > a.stamp ? b : a));
 
-async function syncChain(chain: ChainAdapter, args: Args, today: string): Promise<StoreEntry[]> {
+/** What --reuse can copy: the previous run's stores and the files each was built from. */
+interface Previous {
+  sources: Map<string, Source>;
+  entries: Map<string, StoreEntry>;
+}
+
+function loadPrevious(args: Args): Previous {
+  const empty: Previous = { sources: new Map(), entries: new Map() };
+  if (!args.reuse || !args.fallback) return empty;
+  const sourcesPath = join(args.fallback, 'sources.json');
+  const indexPath = join(args.fallback, 'index.json');
+  if (!existsSync(sourcesPath) || !existsSync(indexPath)) return empty;
+  try {
+    const sources = JSON.parse(readFileSync(sourcesPath, 'utf8')) as Record<string, Source>;
+    const index = JSON.parse(readFileSync(indexPath, 'utf8')) as { stores: StoreEntry[] };
+    return { sources: new Map(Object.entries(sources)), entries: new Map(index.stores.map((e) => [e.id, e])) };
+  } catch {
+    return empty;
+  }
+}
+
+async function syncChain(
+  chain: ChainAdapter,
+  args: Args,
+  today: string,
+  previous: Previous,
+  sources: Map<string, Source>,
+): Promise<StoreEntry[]> {
   const files = await chain.list();
   const storesFiles = files.filter((f) => f.kind === 'stores');
   const priceFiles = new Map<string, RemoteFile[]>();
@@ -130,6 +170,27 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
   const results = await mapPool(storeIds, args.concurrency, async (storeId): Promise<StoreEntry | null> => {
     const candidates = priceFiles.get(storeId)!.sort((a, b) => a.stamp.localeCompare(b.stamp));
     const toRead = chain.mergeAllPriceFiles ? candidates : [candidates[candidates.length - 1]];
+    const id = `${chain.id}-${storeId}`;
+    const promoFile = promoFiles.get(storeId);
+    const source: Source = {
+      src: [...toRead.map((f) => f.name), promoFile?.length ? newest(promoFile).name : ''].join('|'),
+      day: today,
+      pv: PARSER_VERSION,
+    };
+    sources.set(id, source);
+
+    // Nothing new from the chain for this store since the last run: copy what that run built.
+    const before = previous.sources.get(id);
+    const entry = previous.entries.get(id);
+    if (
+      before && entry && args.fallback &&
+      before.src === source.src && before.day === source.day && before.pv === source.pv &&
+      existsSync(join(args.fallback, entry.f))
+    ) {
+      copyFileSync(join(args.fallback, entry.f), join(args.out, entry.f));
+      return { ...entry, ...(() => { const d = describe(storeId); return { n: d.name, sub: d.sub, city: d.city, a: d.address }; })() };
+    }
+
     const items = new Map<string, PriceItem>();
     for (const f of toRead) {
       for (const [code, item] of parsePriceFull(decodeFile(await chain.download(f))).items) items.set(code, item);
@@ -137,7 +198,6 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
     if (items.size < MIN_ITEMS_PER_STORE) return null;
 
     let promos = new Map<string, ReturnType<typeof pickPromos>>();
-    const promoFile = promoFiles.get(storeId);
     if (promoFile?.length) {
       try {
         const raw = parsePromoFull(decodeFile(await chain.download(newest(promoFile))), today);
@@ -165,7 +225,6 @@ async function syncChain(chain: ChainAdapter, args: Args, today: string): Promis
         return row;
       });
 
-    const id = `${chain.id}-${storeId}`;
     const updated = stampToIso(candidates[candidates.length - 1].stamp);
     const gz = gzipSync(JSON.stringify({ v: DATA_VERSION, id, u: updated, items: rows }), { level: 9 });
     const file = `s/${id}.json.gz`;
@@ -268,7 +327,9 @@ async function main() {
   const stores: StoreEntry[] = [];
   const failedChains: string[] = [];
   // Chains live on different hosts, so they can run side by side without hammering anyone.
-  const perChain = await mapPool(chains, 4, (chain) => syncChain(chain, args, today));
+  const previous = loadPrevious(args);
+  const sources = new Map<string, Source>();
+  const perChain = await mapPool(chains, 4, (chain) => syncChain(chain, args, today, previous, sources));
   perChain.forEach((r, i) => {
     if (r.ok) stores.push(...r.value);
     else {
@@ -307,6 +368,13 @@ async function main() {
     stores,
   };
   writeFileSync(join(args.out, 'index.json'), JSON.stringify(index));
+  if (args.reuse) {
+    const written = new Set(stores.map((st) => st.id));
+    writeFileSync(
+      join(args.out, 'sources.json'),
+      JSON.stringify(Object.fromEntries([...sources].filter(([id]) => written.has(id)))),
+    );
+  }
 
   const totalMb = stores.reduce((n, s) => n + s.z, 0) / 1e6;
   console.log(
