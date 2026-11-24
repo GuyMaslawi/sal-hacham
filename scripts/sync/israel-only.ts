@@ -10,13 +10,20 @@
 //
 //   npm run deploy:israel -- --chains carrefour,victory   only these chains
 //   npm run deploy:israel -- --no-rebuild                 upload only, do not trigger a rebuild
+//   node scripts/sync/israel-only.ts --hourly             for the hourly job on Guy's Mac
+//
+// --hourly builds on the previous run's data kept on this computer instead of downloading the
+// last upload again, uploads only when a price list actually changed, and leaves the rebuild to
+// the site's own hourly run. It runs under plain Node (no tsx), from scripts/hourly-israel.sh.
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { CHAINS } from './chains.ts';
 
 const RELEASE = 'local-data';
 const ARCHIVE = '.local-data/local-data.tar';
+const UPLOADED = '.local-data/uploaded.sha256';
 
 const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: 'inherit' });
 const read = (cmd: string, args: string[]) => execFileSync(cmd, args, { encoding: 'utf8' }).trim();
@@ -61,26 +68,46 @@ async function chainsToFetch(): Promise<string[]> {
   }
 }
 
+const hourly = flag('hourly');
 const chains = await chainsToFetch();
 console.log(`Fetching from this computer: ${chains.join(', ')}`);
 
 // Start from what was uploaded last time, so a run at an hour when a chain has not published
-// yet keeps that chain's previous prices instead of dropping it.
+// yet keeps that chain's previous prices instead of dropping it. The hourly job keeps that data
+// here between runs; otherwise it is downloaded from the release.
 rmSync('.local-data/prev', { recursive: true, force: true });
 mkdirSync('.local-data/prev', { recursive: true });
-try {
-  read('gh', ['release', 'download', RELEASE, '--repo', repo, '--pattern', 'local-data.tar', '--dir', '.local-data/prev']);
-  run('tar', ['-xf', '.local-data/prev/local-data.tar', '-C', '.local-data/prev']);
-} catch {
-  console.log('No earlier upload to build on.');
+if (hourly && existsSync('.local-data/data/index.json')) {
+  renameSync('.local-data/data', '.local-data/prev/data');
+} else {
+  try {
+    read('gh', ['release', 'download', RELEASE, '--repo', repo, '--pattern', 'local-data.tar', '--dir', '.local-data/prev']);
+    run('tar', ['-xf', '.local-data/prev/local-data.tar', '-C', '.local-data/prev']);
+  } catch {
+    console.log('No earlier upload to build on.');
+  }
 }
-run('npx', [
-  'tsx', 'scripts/sync/index.ts',
+// The same Node that runs this script, with the same loader (tsx under npm, none under --hourly).
+run(process.execPath, [
+  ...process.execArgv,
+  'scripts/sync/index.ts',
   '--chains', chains.join(','),
   '--out', '.local-data/data',
   '--fallback', '.local-data/prev/data',
 ]);
 rmSync('.local-data/prev', { recursive: true, force: true });
+
+/** A fingerprint of every store's price list, to tell whether anything changed since the last upload. */
+function fingerprint(dir: string): string {
+  const hash = createHash('sha256');
+  for (const f of readdirSync(`${dir}/s`).sort()) hash.update(f).update(readFileSync(`${dir}/s/${f}`));
+  return hash.digest('hex');
+}
+const print = fingerprint('.local-data/data');
+if (hourly && existsSync(UPLOADED) && readFileSync(UPLOADED, 'utf8') === print) {
+  console.log('No chain published new prices since the last upload; nothing to send.');
+  process.exit(0);
+}
 
 // The store files are already compressed, so a plain tar is enough.
 run('tar', ['-cf', ARCHIVE, '-C', '.local-data', 'data']);
@@ -96,8 +123,9 @@ try {
   ]);
 }
 run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber']);
+writeFileSync(UPLOADED, print);
 
-if (flag('no-rebuild')) {
+if (flag('no-rebuild') || hourly) {
   console.log('Uploaded. The next scheduled or manual rebuild will include these chains.');
 } else {
   run('gh', ['workflow', 'run', 'sync-prices.yml', '--repo', repo]);

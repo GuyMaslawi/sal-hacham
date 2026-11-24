@@ -4,11 +4,13 @@ const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 export class HttpError extends Error {
-  constructor(
-    public status: number,
-    public url: string,
-  ) {
+  status: number;
+  url: string;
+  // Plain fields rather than constructor parameter properties, so Node runs this file as is.
+  constructor(status: number, url: string) {
     super(`HTTP ${status} for ${url.slice(0, 120)}`);
+    this.status = status;
+    this.url = url;
   }
 }
 
