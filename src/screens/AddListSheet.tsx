@@ -4,8 +4,10 @@ import { Button, Sheet, cx, toast } from '../components/ui';
 import { pickPhoto, readClipboard } from '../lib/listInput';
 import { readListFromImage, type ReadProgress } from '../lib/ocr';
 import { canDictate, dictationProblem, startDictation, type Dictation } from '../lib/speech';
-import { parseShoppingList } from '../lib/text';
+import { nameStats, splitSpokenLine } from '../lib/splitSpoken';
+import { normalize, parseShoppingList } from '../lib/text';
 import { useApp } from '../state/app';
+import { useData } from '../state/data';
 import { useNav, type ListStart } from '../state/nav';
 
 type Activity = { kind: 'idle' } | { kind: 'listening'; current: string } | ({ kind: 'reading' } & ReadProgress);
@@ -39,6 +41,24 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
   textRef.current = text;
   const lines = useMemo(() => parseShoppingList(text), [text]);
   const voice = canDictate();
+  // The product names of the chosen stores, to tell where one spoken item ends and the next
+  // begins ("קוטג' לחם עגבניות ולחם פרוס" said in one breath is four items).
+  const catalog = useData((s) => s.catalog);
+  const splitter = useMemo(() => {
+    let stats: ReturnType<typeof nameStats> | null = null;
+    const done = new Map<string, string[]>();
+    return (line: string) => {
+      let parts = done.get(line);
+      if (!parts) {
+        stats ??= nameStats(catalog.list.map((p) => normalize(p.name)));
+        parts = splitSpokenLine(line, stats);
+        done.set(line, parts);
+      }
+      return parts;
+    };
+  }, [catalog]);
+  const splitRef = useRef(splitter);
+  splitRef.current = splitter;
   const listening = activity.kind === 'listening';
   const reading = activity.kind === 'reading';
 
@@ -51,7 +71,7 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
     setActivity({ kind: 'listening', current: '' });
     dictation.current = startDictation({
       onText: (heard, current) => {
-        setText(appendLines(before, heard));
+        setText(appendLines(before, heard.flatMap((line) => splitRef.current(line))));
         setActivity((a) => (a.kind === 'listening' ? { kind: 'listening', current } : a));
       },
       onEnd: (error) => {
@@ -171,7 +191,7 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
           <div className="min-w-0 flex-1">
             <p className="font-bold">מקשיב…</p>
             <p className="text-sm opacity-80">
-              {activity.current ? `${activity.current}…` : 'אמור מוצר ועצור רגע. כל עצירה היא שורה חדשה.'}
+              {activity.current ? `${activity.current}…` : 'אמור את המוצרים אחד אחרי השני, למשל: חלב, לחם פרוס, שתי עגבניות.'}
             </p>
           </div>
           <Button variant="tag" className="min-h-11 shrink-0 px-4" onClick={stopVoice}>
