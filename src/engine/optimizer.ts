@@ -2,6 +2,7 @@
 // stores is worth the extra stop.
 
 import { sameProductElsewhere, type Catalog } from '../data/catalog';
+import { kindCeiling, kindOf, productsOfKind } from '../data/kinds';
 import { costFor, round2, type PricingOptions } from '../lib/pricing';
 import type { ListItem, Product, Promo } from '../types';
 
@@ -50,6 +51,14 @@ export interface Comparison {
   pricedCount: number;
 }
 
+/** The staple type a line is priced by, or null when it is priced by its own products only. */
+export function lineKind(item: ListItem, catalog: Catalog): string | null {
+  if (item.exact) return null;
+  if (item.kind) return item.kind;
+  const main = item.pids[0] ? catalog.products.get(item.pids[0]) : undefined;
+  return main ? (kindOf(main)?.id ?? null) : null;
+}
+
 /** The cheapest acceptable product for one list line in one store, or null if none is sold. */
 export function quoteLine(item: ListItem, storeId: string, catalog: Catalog, opts: PricingOptions): Line | null {
   let best: Line | null = null;
@@ -60,6 +69,17 @@ export function quoteLine(item: ListItem, storeId: string, catalog: Catalog, opt
     if (!best || cost.total < best.total) best = { itemId: item.id, pid, ...cost };
   };
   for (const pid of item.pids) consider(pid, catalog.products.get(pid));
+  // A staple bought by type: the cheapest product of the type this store sells, leaving out
+  // anything priced like something else that shares the name.
+  const kind = lineKind(item, catalog);
+  if (kind) {
+    const ceiling = kindCeiling(catalog, kind);
+    for (const p of productsOfKind(catalog, kind)) {
+      const offer = p.offers.get(storeId);
+      if (offer && offer.price <= ceiling) consider(p.pid, p);
+    }
+    return best;
+  }
   // Produce and deli items have a different code in every chain: a tomato chosen in one chain is
   // still a tomato in the next, so look for the same thing by name before calling it missing.
   if (!best) {

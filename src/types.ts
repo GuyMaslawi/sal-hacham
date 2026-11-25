@@ -91,6 +91,13 @@ export interface ListItem {
   qty: number;
   /** The quantity is in kilos ("חצי קילו גבינה"), not a count; set until a product fixes the meaning. */
   kg?: boolean;
+  /**
+   * A staple bought by type (see data/kinds.ts): priced in each store at the cheapest product of
+   * the type, e.g. "tomato". Set when the main product is such a staple.
+   */
+  kind?: string;
+  /** The shopper wants exactly the chosen product, not the cheapest of its type. */
+  exact?: boolean;
   /** Products that satisfy this line, in order of preference. Empty = not matched yet. */
   pids: string[];
   checked: boolean;

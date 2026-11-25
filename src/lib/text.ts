@@ -34,6 +34,8 @@ export function wordForms(word: string): string[] {
   const base = word.slice(0, -2);
   if (word.endsWith('ות')) return [`${base}ה`, `${base}ת`];
   if (word.endsWith('ימ')) return [base, `${base}ה`];
+  // The plural before another word: "תפוחי אדמה" is sold as "תפוח אדמה", "עלי בייבי" as "עלה".
+  if (word.endsWith('י') && !word.endsWith('וי')) return [word.slice(0, -1), `${word.slice(0, -1)}ה`];
   return [];
 }
 

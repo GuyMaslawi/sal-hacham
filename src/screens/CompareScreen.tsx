@@ -270,11 +270,14 @@ function StoreCard({
 }
 
 function LineList({ lines, items }: { lines: Line[]; items: Map<string, ListItem> }) {
+  const catalog = useData((s) => s.catalog);
   return (
     <ul>
       {lines.map((line) => {
         const item = items.get(line.itemId);
         if (!item) return null;
+        // What this store is priced at, when it is not the product the line is named after.
+        const chosen = catalog.products.get(line.pid)?.name;
         return (
           <li key={line.itemId} className="flex items-baseline justify-between gap-3 py-1.5 text-sm">
             <span className="min-w-0">
@@ -282,7 +285,8 @@ function LineList({ lines, items }: { lines: Line[]; items: Map<string, ListItem
                 <QtyBadge qty={item.qty} />
                 {item.label}
               </span>
-              {line.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo)}</DealChip> : null}
+              {chosen && chosen !== item.label ? <span className="line-clamp-1 text-xs text-muted">{chosen}</span> : null}
+              {line.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo, catalog.products.get(line.pid)?.weighted)}</DealChip> : null}
             </span>
             <Price value={line.total} className="shrink-0" />
           </li>

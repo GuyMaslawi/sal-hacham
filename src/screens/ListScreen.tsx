@@ -463,7 +463,7 @@ function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefin
                   </>
                 ) : null}
               </span>
-              {prices.promo ? <DealChip club={prices.promo.club}>{promoLabel(prices.promo)}</DealChip> : null}
+              {prices.promo ? <DealChip club={prices.promo.club}>{promoLabel(prices.promo, weighted)}</DealChip> : null}
               {prices.missingIn > 0 ? (
                 <span className="text-muted">
                   חסר ב-{prices.missingIn} מתוך {storeCount}

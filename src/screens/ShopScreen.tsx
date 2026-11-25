@@ -20,6 +20,10 @@ interface ShopRow {
   elsewhere: { store: StoreInfo; total: number } | null;
   /** This store's prices have not downloaded yet, so "not sold here" would be a guess. */
   pending: boolean;
+  /** The product to take off the shelf here, when it is not what the line is called. */
+  chosen: string | null;
+  /** Sold by weight here: deals are prices per kilo. */
+  weighted: boolean;
 }
 
 /** The list as a checklist for one store, built for one-handed use in the aisle. */
@@ -91,7 +95,16 @@ export function ShopScreen() {
           if (l && (!elsewhere || l.total < elsewhere.total)) elsewhere = { store: other, total: l.total };
         }
       }
-      return { item, line, hint, elsewhere, pending: !catalog.storeIds.includes(storeId) };
+      const name = line ? catalog.products.get(line.pid)?.name : undefined;
+      return {
+        item,
+        line,
+        hint,
+        elsewhere,
+        pending: !catalog.storeIds.includes(storeId),
+        chosen: name && name !== item.label ? name : null,
+        weighted: (line && catalog.products.get(line.pid)?.weighted) ?? false,
+      };
     });
   }, [items, storeId, catalog, opts, stores]);
 
@@ -205,7 +218,7 @@ export function ShopScreen() {
 }
 
 function CheckRow({ row }: { row: ShopRow }) {
-  const { item, line, hint, elsewhere, pending } = row;
+  const { item, line, hint, elsewhere, pending, chosen, weighted } = row;
   const index = useData((s) => s.index);
   const toggle = useApp((s) => s.toggleChecked);
   const open = useNav((s) => s.open);
@@ -238,10 +251,12 @@ function CheckRow({ row }: { row: ShopRow }) {
           <QtyBadge qty={item.qty} />
           {item.label}
         </span>
+        {chosen && !item.checked ? <span className="mt-0.5 block text-sm text-muted">כאן: {chosen}</span> : null}
         {item.checked ? null : (
           <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-            {line?.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo)}</DealChip> : null}
-            {hint && more > 0 && more <= 2 ? (
+            {line?.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo, weighted)}</DealChip> : null}
+            {hint && weighted ? <span>{promoLabel(hint, true)}</span> : null}
+            {hint && !weighted && more > 0 && more <= 2 ? (
               <span>
                 עוד {more === 1 ? 'אחד' : more} ויוצא {promoLabel(hint)}
               </span>

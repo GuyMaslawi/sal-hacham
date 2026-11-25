@@ -2,7 +2,8 @@ import { Trash2, X } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { Button, DealChip, IconButton, Price, Sheet, Stepper } from '../components/ui';
 import { suggestSubstitutes } from '../data/catalog';
-import { quoteLine } from '../engine/optimizer';
+import { kindById, kindOf } from '../data/kinds';
+import { lineKind, quoteLine } from '../engine/optimizer';
 import { changeQty, removeWithUndo } from '../lib/actions';
 import { costFor, formatPrice, nextDeal, promoLabel, sizeLabel, unitPrice } from '../lib/pricing';
 import { qtyUnit, storeTitle, useChosenStores, usePricingOptions } from '../lib/view';
@@ -10,6 +11,42 @@ import { stepFor, useApp } from '../state/app';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
 import type { ListItem, Product, StoreInfo } from '../types';
+
+/**
+ * For staples bought by type (tomatoes, chicken breast, eggs L 12): whether each store is priced
+ * at its cheapest product of the type, or only at the product chosen. Shown only when the main
+ * product is such a staple.
+ */
+function ByKind({ item, main }: { item: ListItem; main: Product | undefined }) {
+  const catalog = useData((s) => s.catalog);
+  const setExact = useApp((s) => s.setExact);
+  const kindId = lineKind(item, catalog);
+  const possible = item.kind ? kindById(item.kind) : main ? kindOf(main) : null;
+  if (!possible) return null;
+  const kind = kindId ? kindById(kindId) : null;
+  return (
+    <div className="mt-5 rounded-xl bg-sunken p-3 text-sm">
+      {kind ? (
+        <>
+          <p>
+            <span className="font-semibold">משווים לפי סוג: {kind.label}.</span> בכל סניף נלקח המוצר הזול ביותר מהסוג הזה,
+            גם אם השם שלו קצת אחר.
+          </p>
+          <button type="button" className="mt-1.5 min-h-10 font-semibold underline underline-offset-4" onClick={() => setExact(item.id, true)}>
+            להשוות רק את המוצר שבחרתי
+          </button>
+        </>
+      ) : (
+        <>
+          <p>משווים רק את המוצר שבחרת.</p>
+          <button type="button" className="mt-1.5 min-h-10 font-semibold underline underline-offset-4" onClick={() => setExact(item.id, false)}>
+            להשוות כל {possible.label} (הזול בכל סניף)
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Everything about one line of the list: quantity, price in every store, stand-ins. */
 export function ItemSheet({ itemId }: { itemId: string }) {
@@ -78,6 +115,7 @@ export function ItemSheet({ itemId }: { itemId: string }) {
         </div>
       ) : (
         <>
+          <ByKind item={item} main={main} />
           <h3 className="mt-6 mb-1 text-sm font-semibold text-muted">
             המחיר ל-{item.qty} {weighted ? 'ק"ג' : item.qty === 1 ? 'יחידה' : 'יחידות'} בכל סניף
           </h3>
@@ -94,7 +132,7 @@ export function ItemSheet({ itemId }: { itemId: string }) {
                     store={store}
                     title={storeTitle(store, index)}
                     product={catalog.products.get(line.pid)!}
-                    showProduct={products.length > 1}
+                    showProduct={products.length > 1 || catalog.products.get(line.pid)?.name !== item.label}
                     line={line}
                     qty={item.qty}
                     extra={cheapest !== undefined ? line.total - cheapest : 0}
@@ -168,10 +206,10 @@ function PricedRow({
         <p className="leading-snug font-medium">{title}</p>
         {showProduct ? <p className="truncate text-sm text-muted">{product.name}</p> : null}
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-          {line.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo)}</DealChip> : null}
+          {line.promo ? <DealChip club={line.promo.club}>{promoLabel(line.promo, product.weighted)}</DealChip> : null}
           {hint ? (
             <span>
-              בקניית {hint.minQty}: {promoLabel(hint)}
+              {product.weighted ? promoLabel(hint, true) : `בקניית ${hint.minQty}: ${promoLabel(hint)}`}
             </span>
           ) : null}
           {per ? (

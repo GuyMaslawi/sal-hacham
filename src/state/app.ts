@@ -3,6 +3,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { kindOf } from '../data/kinds';
 import type { ParsedLine } from '../lib/text';
 import type { ListItem, Product, Settings } from '../types';
 
@@ -29,6 +30,8 @@ interface AppState {
   /** Attach a product to a line. `primary` replaces the line's name (first match). */
   attachProduct(itemId: string, product: Product, primary: boolean): void;
   detachProduct(itemId: string, pid: string): void;
+  /** Price a staple line by the exact product chosen (true) or by the cheapest of its type. */
+  setExact(itemId: string, exact: boolean): void;
 
   setStoreIds(ids: string[]): void;
   setSettings(patch: Partial<Settings>): void;
@@ -85,6 +88,7 @@ export const useApp = create<AppState>()(
             id: newId(),
             label: product.name,
             qty: Math.min(MAX_QTY, qty ?? 1),
+            ...(kindOf(product) ? { kind: kindOf(product)!.id } : {}),
             pids: [product.pid],
             checked: false,
             addedAt: Date.now(),
@@ -150,6 +154,8 @@ export const useApp = create<AppState>()(
                   pids: [product.pid, ...i.pids],
                   qty: fitQty(i.qty, i.kg, product),
                   kg: product.weighted,
+                  kind: kindOf(product)?.id,
+                  exact: undefined,
                 }
               : { ...i, pids: [...i.pids, product.pid] };
           }),
@@ -159,6 +165,9 @@ export const useApp = create<AppState>()(
         set((s) => ({
           items: s.items.map((i) => (i.id === itemId ? { ...i, pids: i.pids.filter((p) => p !== pid) } : i)),
         })),
+
+      setExact: (itemId, exact) =>
+        set((s) => ({ items: s.items.map((i) => (i.id === itemId ? { ...i, exact: exact || undefined } : i)) })),
 
       setStoreIds: (ids) =>
         set((s) => ({

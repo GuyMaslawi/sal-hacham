@@ -219,7 +219,7 @@ function ResultRow({
                 <Price value={per.value} className="font-normal" /> {per.per}
               </span>
             ) : null}
-            {deal ? <DealChip club={deal.club}>{promoLabel(deal)}</DealChip> : null}
+            {deal ? <DealChip club={deal.club}>{promoLabel(deal, product.weighted)}</DealChip> : null}
             {canExpand ? (
               <span className="inline-flex items-center gap-0.5">
                 ב-{product.offers.size} מתוך {storeCount} סניפים
@@ -274,7 +274,7 @@ function StorePrices({ product }: { product: Product }) {
         <li key={store.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
           <span className="min-w-0 truncate">{storeTitle(store, index)}</span>
           <span className="flex shrink-0 items-center gap-2">
-            {deal && deal.minQty > 1 ? <DealChip club={deal.club}>{promoLabel(deal)}</DealChip> : null}
+            {deal && deal.minQty > 1 ? <DealChip club={deal.club}>{promoLabel(deal, product.weighted)}</DealChip> : null}
             {price === null ? (
               <span className="text-muted">{loaded.includes(store.id) ? 'לא נמכר' : 'עוד לא ירד'}</span>
             ) : (

@@ -134,8 +134,13 @@ const amount = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximu
 export const formatPrice = (n: number) => `₪${amount.format(n)}`;
 
 /** "2 ב-10 ₪" / "מבצע 12.90 ₪", marked when it is for club members only. */
-export function promoLabel(p: Promo): string {
-  const price = Number.isInteger(p.price) ? String(p.price) : p.price.toFixed(2);
-  const deal = p.minQty > 1 ? `${p.minQty} ב-${price} ₪` : `מבצע ${price} ₪`;
+export function promoLabel(p: Promo, weighted = false): string {
+  const shekels = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  // By weight, a deal is a price per kilo, sometimes from a minimum weight: "35.00 ₪ לק"ג מ-1.85 ק"ג".
+  const deal = weighted
+    ? `${p.minQty > 1 ? '' : 'מבצע '}${shekels(round2(p.price / p.minQty))} ₪ לק"ג${p.minQty > 1 ? ` מ-${p.minQty} ק"ג` : ''}`
+    : p.minQty > 1
+      ? `${p.minQty} ב-${shekels(p.price)} ₪`
+      : `מבצע ${shekels(p.price)} ₪`;
   return p.club ? `מועדון: ${deal}` : deal;
 }
