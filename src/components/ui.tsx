@@ -38,12 +38,15 @@ export function PriceTag({
         plain ? 'text-ink' : 'bg-tag text-tag-ink',
       )}
     >
+      {/* The shekel sign leads, as on Israeli shelf labels and everywhere else in the app: ₪206⁵⁴. */}
+      <span aria-hidden className={cx('pt-[0.12em] font-sans leading-none font-bold', scale.small)}>
+        ₪
+      </span>
       <span aria-hidden className={cx(scale.big, 'tracking-[0.03em]')}>
         {Number(shekels).toLocaleString('en-US')}
       </span>
-      <span aria-hidden className={cx('flex flex-col items-start pt-[0.12em]', scale.small)}>
-        <span>{agorot}</span>
-        <span className="font-sans text-[0.72em] leading-none font-bold">₪</span>
+      <span aria-hidden className={cx('pt-[0.12em]', scale.small)}>
+        {agorot}
       </span>
       {/* What screen readers say instead of the drawn digits. */}
       <span className="sr-only">{label ?? formatPrice(value)}</span>
