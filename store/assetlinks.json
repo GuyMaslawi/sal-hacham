@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.guymaslawi.salhacham",
+      "sha256_cert_fingerprints": [
+        "11:4E:99:F6:63:BD:06:65:9E:91:CB:90:A5:B8:39:21:23:05:D6:6C:E6:34:A6:A9:08:37:8D:90:38:8F:09:EA",
+        "EB:41:89:19:C6:B6:1C:E5:8B:F1:F6:D2:4B:91:91:D1:E6:20:07:06:59:5E:AD:49:78:D7:FC:B7:01:53:77:70"
+      ]
+    }
+  }
+]

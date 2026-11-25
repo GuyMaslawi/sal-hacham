@@ -85,6 +85,8 @@ try {
   const settled = `![...document.querySelectorAll('[aria-live=polite].fixed, [role=status], [role=alert]')].some((e) => e.innerText.trim())`;
 
   const shots = resolve('store/screenshots');
+  // Start clean, so a screenshot that is no longer taken does not linger in the listing folder.
+  rmSync(shots, { recursive: true, force: true });
   mkdirSync(shots, { recursive: true });
   const shoot = async (name) => {
     await sleep(900);
@@ -101,24 +103,27 @@ try {
   console.log('Screenshots:');
   await send('Page.navigate', { url: SITE });
   await waitFor(hasText('בחר עיר'), 'the welcome screen');
-  await shoot('6-welcome');
+  await shoot('7-welcome');
 
   await click('בחר עיר');
   await waitFor(hasText(CITY), 'the city list');
   await click(CITY);
   await waitFor(hasText('המשך עם'), 'the suggested stores');
-  await shoot('5-nearby');
+  await shoot('6-nearby');
   await click('המשך עם');
-  await waitFor(hasText('הדבק רשימה'), 'the empty list');
+  await waitFor(hasText('הקלד שם של מוצר'), 'the empty list');
 
-  await click('הדבק רשימה');
-  await run(`(() => {
-    const box = document.querySelector('textarea');
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(box, ${JSON.stringify(LIST.join('\n'))});
-    box.dispatchEvent(new Event('input', { bubbles: true }));
-  })()`);
-  await click(`הוסף ${LIST.length} שורות`);
-  // Confirm the product the app suggests for every pasted line.
+  // The way to add a whole list at once: said, photographed or pasted into one box.
+  // A list copied from WhatsApp, as the paste button reads it.
+  await run(`Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText: async () => ${JSON.stringify(LIST.join('\n'))} } })`);
+  await click('הדבקה');
+  await waitFor(`!!document.querySelector('[role=dialog] textarea')`, 'the add-list sheet');
+  await waitFor(hasText(`הוסף ${LIST.length} מוצרים לרשימה`), 'the add button');
+  await shoot('2-add-list');
+  await click(`הוסף ${LIST.length} מוצרים לרשימה`);
+  // Take the suggested product for every line at once, or one by one if that banner is absent.
+  await run(`[...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'אשר הכול')?.click()`);
+  await sleep(700);
   for (let i = 0; i < 40; i++) {
     const left = await run(`(() => {
       const yes = [...document.querySelectorAll('button')].filter((b) => b.innerText.trim() === 'כן, זה המוצר');
@@ -134,16 +139,16 @@ try {
 
   await click('הבא: איפה הכי זול?');
   await waitFor(hasText('הכי זול'), 'the comparison');
-  await shoot('2-compare');
+  await shoot('3-compare');
 
   await tab('בסופר');
   await sleep(500);
-  await shoot('4-shop');
+  await shoot('5-shop');
 
   await tab('רשימה');
   await run(`document.querySelector('section[aria-label="המוצרים ברשימה"] li button')?.click()`);
   await sleep(700);
-  await shoot('3-product');
+  await shoot('4-product');
 
   console.log('Feature graphic:');
   await send('Emulation.clearDeviceMetricsOverride');
