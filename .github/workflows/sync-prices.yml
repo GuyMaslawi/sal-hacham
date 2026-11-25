@@ -1,5 +1,10 @@
 # Every hour: download the chains' price files, rebuild the app with the fresh data and
 # publish it to GitHub Pages. Free on a public repository; a run takes about five minutes.
+#
+# Two clocks start it. GitHub's own schedule is unreliable (runs are delayed or dropped for
+# hours), so the hourly job on Guy's Mac (scripts/hourly-israel.sh) also starts it, right after
+# uploading the chains that only answer from Israel. When the Mac already started a run in the
+# last 45 minutes, the scheduled run steps aside; when the Mac is off, the schedule still runs.
 name: Sync prices and deploy
 
 on:
@@ -21,13 +26,35 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: pages
   cancel-in-progress: false
 
 jobs:
+  # A scheduled run is not needed when the Mac's hourly job has just started one.
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.recent.outputs.skip }}
+    steps:
+      - id: recent
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          skip=false
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            since=$(date -u -d '45 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
+            recent=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow sync-prices.yml --event workflow_dispatch --limit 5 \
+              --json createdAt,conclusion --jq "[.[] | select(.createdAt >= \"$since\" and .conclusion == \"success\")] | length" || echo 0)
+            if [ "${recent:-0}" -gt 0 ]; then skip=true; echo "The Mac started a run in the last 45 minutes; skipping."; fi
+          fi
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:

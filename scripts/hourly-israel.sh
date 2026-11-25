@@ -1,6 +1,8 @@
 #!/bin/bash
-# The hourly job on Guy's Mac. It fetches the chains that refuse GitHub's servers and uploads
-# them for the site's own hourly rebuild (minute 17), so this runs a few minutes before it.
+# The hourly job on Guy's Mac. It fetches the chains that refuse GitHub's servers, uploads them,
+# and then starts the site's rebuild on GitHub, which refreshes every other chain too. GitHub's
+# own hourly schedule (minute 17) is only a fallback for when the Mac is off: it is unreliable,
+# and it steps aside when this job has already started a rebuild.
 #
 # Installed as ~/Library/LaunchAgents/io.github.guymaslawi.salhacham.israel.plist, running from a
 # separate copy of this repository in ~/Library/Application Support/SalHachamSync/repo: macOS
@@ -38,7 +40,22 @@ node scripts/sync/israel-only.ts --hourly > "$LOGS/last-run.log" 2>&1
 status=$?
 took=$(( $(date +%s) - started ))
 result=$(grep -E 'nothing to send|Uploaded' "$LOGS/last-run.log" | tail -1)
-echo "$(stamp) exit $status after ${took}s: ${result:-see last-run.log}" >> "$LOGS/history.log"
+
+# Rebuild the site every hour, whether or not these chains changed: the other chains are fetched
+# by GitHub during the rebuild. Always as the account that owns the repository.
+origin=$(git remote get-url origin)
+repo=$(printf '%s' "$origin" | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
+owner=${repo%%/*}
+token=$(gh auth token --user "$owner" 2>/dev/null)
+# Never fall back to whichever account happens to be active.
+if [ -z "$token" ]; then
+  rebuild="rebuild NOT started: gh is not logged in as $owner"
+elif GH_TOKEN="$token" gh workflow run sync-prices.yml --repo "$repo" >> "$LOGS/last-run.log" 2>&1; then
+  rebuild="rebuild started"
+else
+  rebuild="rebuild NOT started (see last-run.log)"
+fi
+echo "$(stamp) exit $status after ${took}s: ${result:-see last-run.log}; $rebuild" >> "$LOGS/history.log"
 # Keep the history short.
 tail -n 1000 "$LOGS/history.log" > "$LOGS/history.tmp" && mv "$LOGS/history.tmp" "$LOGS/history.log"
 exit $status
