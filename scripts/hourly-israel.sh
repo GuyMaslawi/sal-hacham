@@ -56,6 +56,11 @@ else
   rebuild="rebuild NOT started (see last-run.log)"
 fi
 echo "$(stamp) exit $status after ${took}s: ${result:-see last-run.log}; $rebuild" >> "$LOGS/history.log"
+
+# Say so on the screen when something went wrong, rather than only in a log nobody reads.
+if [ "$status" -ne 0 ] || [ "$rebuild" != "rebuild started" ]; then
+  osascript -e 'display notification "העדכון השעתי לא הצליח. הפרטים ביומן: ~/Library/Logs/SalHacham/last-run.log" with title "סל חכם"' >/dev/null 2>&1 || true
+fi
 # Keep the history short.
 tail -n 1000 "$LOGS/history.log" > "$LOGS/history.tmp" && mv "$LOGS/history.tmp" "$LOGS/history.log"
 exit $status

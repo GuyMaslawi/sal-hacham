@@ -1,0 +1,72 @@
+# Watches that prices keep flowing. After every rebuild, and every three hours in case rebuilds
+# stopped altogether, it checks the published data (scripts/health.ts). When a chain has gone
+# quiet for more than two days, the Mac's chains stopped, or the site has not been rebuilt in
+# half a day, it opens an issue, which GitHub emails to the repository's owner. It edits that
+# issue while the trouble lasts (commenting, and so emailing again, only when the trouble
+# changes) and closes it once everything is fine again.
+name: Health check
+
+on:
+  workflow_run:
+    workflows: ['Sync prices and deploy']
+    types: [completed]
+  schedule:
+    - cron: '41 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: health
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      # Pages takes a moment to serve a fresh deploy.
+      - if: github.event_name == 'workflow_run'
+        run: sleep 90
+      - id: health
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set +e
+          node scripts/health.ts "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/index.json" > report.md
+          echo "status=$?" >> "$GITHUB_OUTPUT"
+          cat report.md
+      - name: Open, update or close the alert
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.health.outputs.status }}
+          OWNER: ${{ github.repository_owner }}
+          LAST_RUN: ${{ github.event.workflow_run.conclusion }}
+          LAST_RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          repo="$GITHUB_REPOSITORY"
+          if [ "$LAST_RUN" = "failure" ]; then
+            printf '\nהבנייה האחרונה נכשלה: %s\n' "$LAST_RUN_URL" >> report.md
+          fi
+          open=$(gh issue list --repo "$repo" --state open --label health --json number --jq '.[0].number // empty')
+          if [ "$STATUS" != "0" ]; then
+            body="$(printf '@%s\n\n%s' "$OWNER" "$(cat report.md)")"
+            if [ -z "$open" ]; then
+              gh label create health --repo "$repo" --color D93F0B --description "Prices stopped updating" 2>/dev/null || true
+              gh issue create --repo "$repo" --title "סל חכם: המחירים לא מתעדכנים" --label health --body "$body"
+            else
+              problems() { sed -n '/מה לא תקין/,/^$/p'; }
+              before=$(gh issue view "$open" --repo "$repo" --json body --jq .body | problems)
+              now=$(problems < report.md)
+              gh issue edit "$open" --repo "$repo" --body "$body"
+              if [ "$before" != "$now" ]; then gh issue comment "$open" --repo "$repo" --body "@$OWNER המצב השתנה:"$'\n\n'"$(cat report.md)"; fi
+            fi
+          elif [ -n "$open" ]; then
+            gh issue close "$open" --repo "$repo" --comment "חזר לעבוד: כל הרשתות מתעדכנות והאתר נבנה כרגיל."
+          fi
