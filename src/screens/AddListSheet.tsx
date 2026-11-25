@@ -59,6 +59,19 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
   }, [catalog]);
   const splitRef = useRef(splitter);
   splitRef.current = splitter;
+  // A photo or a pasted message often has several products on one line with no commas
+  // ("גבינה חלב פיתה לחם"). Split them the way dictation is, by the product names of the chosen
+  // stores. Before any prices have loaded there is nothing to tell where a name ends, so the
+  // lines stay as they are.
+  const canSplit = catalog.list.length >= 500;
+  const splitLines = (block: string) =>
+    !canSplit
+      ? [block]
+      : block
+          .split(/\n|;|(?<!\d),|,(?!\d)/)
+          .map((line) => line.replace(/^[\s\-–•*·▪◦☐☑✓✔✅⬜🔲]+/u, '').replace(/^\d+[.)]\s+/, '').trim())
+          .filter(Boolean)
+          .flatMap((line) => splitRef.current(line));
   const listening = activity.kind === 'listening';
   const reading = activity.kind === 'reading';
 
@@ -107,9 +120,9 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
     setActivity({ kind: 'reading', share: 0, stage: 'loading' });
     try {
       const found = await readListFromImage(image, (p) => setActivity((a) => (a.kind === 'reading' ? { kind: 'reading', ...p } : a)));
-      const count = parseShoppingList(found).length;
+      const count = parseShoppingList(splitLines(found).join('\n')).length;
       if (count > 0) {
-        setText((t) => appendLines(t, [found]));
+        setText((t) => appendLines(t, splitLines(found)));
         setNote({
           text: `${count === 1 ? 'נמצא מוצר אחד' : `נמצאו ${count} מוצרים`} בתמונה. כדאי לעבור על הרשימה ולתקן מה שלא נקרא נכון.`,
         });
@@ -130,7 +143,7 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
     stopVoice();
     const copied = (await (pending ?? readClipboard())).trim();
     if (copied) {
-      setText((t) => appendLines(t, [copied]));
+      setText((t) => appendLines(t, splitLines(copied)));
       setNote(null);
     } else {
       setNote({ text: 'לא קיבלתי טקסט מההעתקה. לחץ לחיצה ארוכה בתיבה ובחר "הדבק".' });

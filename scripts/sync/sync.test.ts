@@ -697,3 +697,13 @@ describe('deploy guard', () => {
     expect(chooseBaseline(null, null, false, all).error).toBeUndefined();
   });
 });
+
+describe('deploy guard and unplaced stores', () => {
+  it('does not count stores with no address and no city', async () => {
+    const { shrinkProblems } = await import('./carry.ts');
+    const named = Array.from({ length: 29 }, () => ({ c: 'kingstore', u: '2026-11-25T08:00', city: 'חיפה', a: 'הרצל 1' }));
+    const nameless = Array.from({ length: 19 }, () => ({ c: 'kingstore', u: '2026-11-25T08:00', city: 'אחר', a: '' }));
+    expect(shrinkProblems([...named, ...nameless], named, '2026-11-25')).toEqual([]);
+    expect(shrinkProblems([...named, ...nameless], named.slice(0, 10), '2026-11-25')).toContain('kingstore: 29 → 10 stores');
+  });
+});

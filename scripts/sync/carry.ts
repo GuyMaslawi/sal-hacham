@@ -71,16 +71,26 @@ export const SHRINK_LIMITS: ShrinkLimits = { chainShare: 0.3, chainMinLost: 3, t
  * Stores the earlier set would have dropped anyway for being too old do not count, and only
  * `chains` are compared when given (a run limited to some chains).
  */
+/**
+ * A store with neither an address nor a known city. Some portals list a batch of these
+ * ("סניף 3360") in one run and not the next; they cannot be found by place anyway, so their
+ * coming and going is not the kind of loss the guard is for.
+ */
+const unplaced = (s: { city?: string; a?: string }) => s.city === 'אחר' && !s.a?.trim();
+
 export function shrinkProblems(
-  previous: Array<{ c: string; u: string }>,
-  next: Array<{ c: string }>,
+  previous: Array<{ c: string; u: string; city?: string; a?: string }>,
+  next: Array<{ c: string; city?: string; a?: string }>,
   today: string,
   chains: ReadonlySet<string> | null = null,
   limits: ShrinkLimits = SHRINK_LIMITS,
 ): string[] {
-  const count = (list: Array<{ c: string }>) => {
+  const count = (list: Array<{ c: string; city?: string; a?: string }>) => {
     const byChain = new Map<string, number>();
-    for (const s of list) if (!chains || chains.has(s.c)) byChain.set(s.c, (byChain.get(s.c) ?? 0) + 1);
+    for (const s of list) {
+      if (unplaced(s)) continue;
+      if (!chains || chains.has(s.c)) byChain.set(s.c, (byChain.get(s.c) ?? 0) + 1);
+    }
     return byChain;
   };
   const before = count(previous.filter((s) => !isStale(s.u, today)));
