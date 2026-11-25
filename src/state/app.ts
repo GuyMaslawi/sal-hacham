@@ -41,6 +41,26 @@ const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slic
 /** Weighted products are bought by the half kilo; everything else by the unit. */
 export const stepFor = (weighted: boolean) => (weighted ? 0.5 : 1);
 
+const MAX_QTY = 99;
+
+/**
+ * A line's quantity in the terms of the product it now points at: kilos for something sold by
+ * weight, whole packages for everything else. "חצי קילו פסטה" is one 500 g packet, not half a
+ * packet; "6 בננות" sold by the kilo is about a kilo, not six.
+ */
+export function fitQty(qty: number, kg: boolean | undefined, product: Pick<Product, 'weighted' | 'qty' | 'unit'>): number {
+  if (product.weighted) {
+    // Already kilos, or no amount given (one kilo).
+    if (kg || qty === 1) return qty;
+    // A count of pieces: about 200 g each, by the half kilo.
+    return Math.min(MAX_QTY, Math.max(0.5, Math.round(qty * 0.2 * 2) / 2));
+  }
+  if (kg && product.qty > 0 && (product.unit === 'g' || product.unit === 'ml')) {
+    return Math.min(MAX_QTY, Math.max(1, Math.round((qty * 1000) / product.qty)));
+  }
+  return Math.min(MAX_QTY, Math.max(1, Math.round(qty)));
+}
+
 export const useApp = create<AppState>()(
   persist(
     (set) => ({
@@ -57,14 +77,14 @@ export const useApp = create<AppState>()(
           if (existing) {
             return {
               items: s.items.map((i) =>
-                i.id === existing.id ? { ...i, qty: i.qty + (qty ?? step), checked: false } : i,
+                i.id === existing.id ? { ...i, qty: Math.min(MAX_QTY, i.qty + (qty ?? step)), checked: false } : i,
               ),
             };
           }
           const item: ListItem = {
             id: newId(),
             label: product.name,
-            qty: qty ?? 1,
+            qty: Math.min(MAX_QTY, qty ?? 1),
             pids: [product.pid],
             checked: false,
             addedAt: Date.now(),
@@ -80,6 +100,7 @@ export const useApp = create<AppState>()(
               id: newId() + n,
               label: l.label,
               qty: l.qty,
+              ...(l.kg ? { kg: true } : {}),
               pids: [],
               checked: false,
               addedAt: Date.now() + n,
@@ -121,8 +142,15 @@ export const useApp = create<AppState>()(
         set((s) => ({
           items: s.items.map((i) => {
             if (i.id !== itemId || i.pids.includes(product.pid)) return i;
+            // The main product decides what the amount means (kilos or packages).
             return primary
-              ? { ...i, label: product.name, pids: [product.pid, ...i.pids] }
+              ? {
+                  ...i,
+                  label: product.name,
+                  pids: [product.pid, ...i.pids],
+                  qty: fitQty(i.qty, i.kg, product),
+                  kg: product.weighted,
+                }
               : { ...i, pids: [...i.pids, product.pid] };
           }),
         })),

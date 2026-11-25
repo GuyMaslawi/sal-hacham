@@ -8,6 +8,11 @@ on:
     # GitHub delays or drops scheduled runs at the top of the hour, when it is busiest.
     - cron: '17 * * * *'
   workflow_dispatch:
+    inputs:
+      allow_shrink:
+        description: Deploy even if a chain lost many stores (a first deploy, or a chain that really went away)
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**.md', 'android/**', 'store/**', 'ios/**', 'capacitor.config.ts']
@@ -46,11 +51,14 @@ jobs:
             echo "No Israel-side data has been uploaded yet."
           fi
       # Stores that did not come back this time keep their last prices: from the Israel-side
-      # file first, then from the site as it is published now. If too few stores come back in
-      # total, the job fails here and the current site stays online.
+      # file or from the site as it is published now, whichever is newer. If too few stores come
+      # back in total, a chain loses more than 30% of its stores (or all chains 20%) compared with
+      # the published site, or neither the site nor the Israel-side file can be read, the job
+      # fails here and the current site stays online.
       - run: >-
           npm run sync -- --min-stores 400 --fallback local-data/data
           --previous-url "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data/"
+          ${{ inputs.allow_shrink && '--allow-shrink' || '' }}
       - run: rm -rf local-data
       - run: npm run build
       - uses: actions/configure-pages@v5

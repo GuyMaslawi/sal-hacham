@@ -18,6 +18,8 @@ interface ShopRow {
   hint: Promo | null;
   /** Cheapest other chosen store that does sell the item, when this one does not. */
   elsewhere: { store: StoreInfo; total: number } | null;
+  /** This store's prices have not downloaded yet, so "not sold here" would be a guess. */
+  pending: boolean;
 }
 
 /** The list as a checklist for one store, built for one-handed use in the aisle. */
@@ -79,8 +81,9 @@ export function ShopScreen() {
       let hint: Promo | null = null;
       let elsewhere: ShopRow['elsewhere'] = null;
       if (line) {
-        const offer = catalog.products.get(line.pid)?.offers.get(storeId);
-        if (offer) hint = nextDeal(offer, item.qty, opts);
+        const product = catalog.products.get(line.pid);
+        const offer = product?.offers.get(storeId);
+        if (product && offer) hint = nextDeal(offer, item.qty, opts, product.weighted);
       } else if (item.pids.length) {
         for (const other of stores) {
           if (other.id === storeId) continue;
@@ -88,7 +91,7 @@ export function ShopScreen() {
           if (l && (!elsewhere || l.total < elsewhere.total)) elsewhere = { store: other, total: l.total };
         }
       }
-      return { item, line, hint, elsewhere };
+      return { item, line, hint, elsewhere, pending: !catalog.storeIds.includes(storeId) };
     });
   }, [items, storeId, catalog, opts, stores]);
 
@@ -202,7 +205,7 @@ export function ShopScreen() {
 }
 
 function CheckRow({ row }: { row: ShopRow }) {
-  const { item, line, hint, elsewhere } = row;
+  const { item, line, hint, elsewhere, pending } = row;
   const index = useData((s) => s.index);
   const toggle = useApp((s) => s.toggleChecked);
   const open = useNav((s) => s.open);
@@ -243,7 +246,8 @@ function CheckRow({ row }: { row: ShopRow }) {
                 עוד {more === 1 ? 'אחד' : more} ויוצא {promoLabel(hint)}
               </span>
             ) : null}
-            {!line && item.pids.length > 0 ? (
+            {!line && item.pids.length > 0 && pending ? <span>המחיר בסניף הזה עוד לא ירד</span> : null}
+            {!line && item.pids.length > 0 && !pending ? (
               <span className="text-alert">
                 לא נמכר כאן
                 {elsewhere ? (

@@ -6,7 +6,7 @@
 //
 // Usage: npm run sync -- [--chains shufersal,carrefour] [--cities "חיפה,נשר"] [--limit 5]
 //                        [--out public/data] [--concurrency 6] [--min-stores 400]
-//                        [--fallback <dir>] [--previous-url <url>] [--reuse]
+//                        [--fallback <dir>] [--previous-url <url>] [--reuse] [--allow-shrink]
 //
 // --reuse (the hourly job on Guy's Mac): a store whose chain has published no new file since the
 // run that produced --fallback is copied from there instead of downloaded and parsed again.
@@ -14,16 +14,23 @@
 //
 // Stores this run could not produce (a portal is down, refuses connections from outside Israel,
 // or has not published yet today) are kept from an earlier run while they are recent enough:
-// first from --fallback, an earlier output folder, then from --previous-url, the published site.
+// from --fallback, an earlier output folder, or --previous-url, the published site, whichever
+// has the newer price list.
+//
+// Before writing an index the run is compared with the data set it replaces (the published site,
+// else --fallback). If a chain lost more than 30% of its stores, or the whole set more than 20%,
+// the run fails and the current data stays online; so it does when --previous-url cannot be read
+// and there is no --fallback either. --allow-shrink deploys anyway (a first deploy, or a chain
+// that really did go away).
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 import { CHAINS, israelDate, type ChainAdapter, type RemoteFile } from './chains.ts';
-import { isStale, selectCarryOver } from './carry.ts';
+import { chooseBaseline, isStale, reuseRecord, selectCarryOver, shrinkProblems } from './carry.ts';
 import { mapPool, request } from './http.ts';
-import { resolveCity, UNKNOWN_CITY } from './normalize.ts';
+import { isOnlineStorefront, resolveCity, UNKNOWN_CITY } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type PriceItem, type RawStore } from './parse.ts';
 import { decodeFile } from './xml.ts';
 
@@ -33,7 +40,7 @@ const DATA_VERSION = 1;
  * built by an older parser are not carried into a new run: better a store missing for a few
  * hours than one showing prices read the old, wrong way.
  */
-const PARSER_VERSION = 2;
+const PARSER_VERSION = 3;
 const MIN_ITEMS_PER_STORE = 200;
 
 interface Args {
@@ -47,6 +54,8 @@ interface Args {
   fallback: string | null;
   previousUrl: string | null;
   reuse: boolean;
+  /** Write the index even when it lost many stores compared with the one it replaces. */
+  allowShrink: boolean;
 }
 
 /** Which chain files built a store, and on which day (promotions are filtered by the day). */
@@ -72,6 +81,7 @@ function parseArgs(argv: string[]): Args {
     fallback: get('fallback') ?? null,
     previousUrl: get('previous-url') ?? null,
     reuse: argv.includes('--reuse'),
+    allowShrink: argv.includes('--allow-shrink'),
   };
 }
 
@@ -96,22 +106,45 @@ const stampToIso = (s: string) =>
 
 const newest = (files: RemoteFile[]) => files.reduce((a, b) => (b.stamp > a.stamp ? b : a));
 
+interface IndexFile {
+  stores: StoreEntry[];
+}
+
+/** The index of the --fallback folder, or null when there is none. */
+function loadFolderIndex(args: Args): IndexFile | null {
+  const indexPath = args.fallback ? join(args.fallback, 'index.json') : '';
+  if (!indexPath || !existsSync(indexPath)) return null;
+  return JSON.parse(readFileSync(indexPath, 'utf8')) as IndexFile;
+}
+
+/** The index currently published at --previous-url, or null when it could not be read. */
+async function loadSiteIndex(args: Args): Promise<IndexFile | null> {
+  if (!args.previousUrl) return null;
+  try {
+    const index = JSON.parse((await request(`${siteBase(args)}index.json`, { retries: 2 })).toString('utf8')) as IndexFile;
+    return Array.isArray(index.stores) ? index : null;
+  } catch (err) {
+    console.warn(`  could not read the published index: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+const siteBase = (args: Args) => args.previousUrl!.replace(/\/?$/, '/');
+
 /** What --reuse can copy: the previous run's stores and the files each was built from. */
 interface Previous {
   sources: Map<string, Source>;
   entries: Map<string, StoreEntry>;
 }
 
-function loadPrevious(args: Args): Previous {
+function loadPrevious(args: Args, folder: IndexFile | null): Previous {
   const empty: Previous = { sources: new Map(), entries: new Map() };
-  if (!args.reuse || !args.fallback) return empty;
+  if (!args.reuse || !args.fallback || !folder) return empty;
   const sourcesPath = join(args.fallback, 'sources.json');
-  const indexPath = join(args.fallback, 'index.json');
-  if (!existsSync(sourcesPath) || !existsSync(indexPath)) return empty;
+  if (!existsSync(sourcesPath)) return empty;
   try {
     const sources = JSON.parse(readFileSync(sourcesPath, 'utf8')) as Record<string, Source>;
-    const index = JSON.parse(readFileSync(indexPath, 'utf8')) as { stores: StoreEntry[] };
-    return { sources: new Map(Object.entries(sources)), entries: new Map(index.stores.map((e) => [e.id, e])) };
+    return { sources: new Map(Object.entries(sources)), entries: new Map(folder.stores.map((e) => [e.id, e])) };
   } catch {
     return empty;
   }
@@ -122,6 +155,7 @@ async function syncChain(
   args: Args,
   today: string,
   previous: Previous,
+  /** Filled in for every store this run built (or copied unchanged): the files it came from. */
   sources: Map<string, Source>,
 ): Promise<StoreEntry[]> {
   const files = await chain.list();
@@ -159,8 +193,8 @@ async function syncChain(
   };
 
   let storeIds = [...priceFiles.keys()].sort((a, b) => Number(a) - Number(b));
-  // Delivery-app storefronts are not places a shopper can walk into.
-  storeIds = storeIds.filter((id) => !/^(וולט|wolt)/i.test(describe(id).name));
+  // Online shops and delivery storefronts are not places a shopper can walk into.
+  storeIds = storeIds.filter((id) => !isOnlineStorefront(describe(id).name));
   // Branches whose newest price list is weeks old have closed; leave them out.
   const stale = new Set(storeIds.filter((id) => isStale(stampToIso(newest(priceFiles.get(id)!).stamp), today)));
   storeIds = storeIds.filter((id) => !stale.has(id));
@@ -177,7 +211,8 @@ async function syncChain(
       day: today,
       pv: PARSER_VERSION,
     };
-    sources.set(id, source);
+    // Recorded only once the store has been built from these files: a store whose download
+    // failed or came back short is carried from an earlier run, and must keep that run's record.
 
     // Nothing new from the chain for this store since the last run: copy what that run built.
     const before = previous.sources.get(id);
@@ -188,7 +223,9 @@ async function syncChain(
       existsSync(join(args.fallback, entry.f))
     ) {
       copyFileSync(join(args.fallback, entry.f), join(args.out, entry.f));
-      return { ...entry, ...(() => { const d = describe(storeId); return { n: d.name, sub: d.sub, city: d.city, a: d.address }; })() };
+      sources.set(id, source);
+      const d = describe(storeId);
+      return { ...entry, n: d.name, sub: d.sub, city: d.city, a: d.address };
     }
 
     const items = new Map<string, PriceItem>();
@@ -229,6 +266,7 @@ async function syncChain(
     const gz = gzipSync(JSON.stringify({ v: DATA_VERSION, id, u: updated, items: rows }), { level: 9 });
     const file = `s/${id}.json.gz`;
     writeFileSync(join(args.out, file), gz);
+    sources.set(id, source);
 
     const d = describe(storeId);
     return {
@@ -266,51 +304,64 @@ async function syncChain(
   return entries;
 }
 
-/** Keep recent stores from an earlier output folder that this run did not produce. */
-function carryOverFromFolder(args: Args, stores: StoreEntry[], today: string): number {
-  const indexPath = args.fallback ? join(args.fallback, 'index.json') : '';
-  if (!args.fallback || !existsSync(indexPath)) return 0;
-  const previous = JSON.parse(readFileSync(indexPath, 'utf8')) as { stores: StoreEntry[] };
-  const wanted = args.chains ? new Set(args.chains) : null;
-  let count = 0;
-  const current = previous.stores.filter((e) => e.pv === PARSER_VERSION);
-  for (const entry of selectCarryOver(current, new Set(stores.map((s) => s.id)), today)) {
-    if (wanted && !wanted.has(entry.c)) continue;
-    const source = join(args.fallback, entry.f);
-    if (!existsSync(source)) continue;
-    copyFileSync(source, join(args.out, entry.f));
-    stores.push(entry);
-    count++;
-  }
-  return count;
+interface CarryCandidate {
+  id: string;
+  u: string;
+  entry: StoreEntry;
+  from: 'folder' | 'site';
 }
 
-/** The same, from the data set that is currently published on the web. */
-async function carryOverFromSite(args: Args, stores: StoreEntry[], today: string): Promise<number> {
-  if (!args.previousUrl) return 0;
-  const base = args.previousUrl.replace(/\/?$/, '/');
-  let previous: { stores: StoreEntry[] };
-  try {
-    previous = JSON.parse((await request(`${base}index.json`, { retries: 1 })).toString('utf8'));
-  } catch {
-    return 0; // First deploy, or the site is unreachable: nothing to carry.
-  }
+/**
+ * Keep recent stores this run did not produce, from the --fallback folder or the published site,
+ * whichever has the newer price list for each. Returns the ids taken from each.
+ */
+async function carryOver(
+  args: Args,
+  stores: StoreEntry[],
+  today: string,
+  folder: IndexFile | null,
+  site: IndexFile | null,
+): Promise<{ fromFolder: Set<string>; fromSite: Set<string> }> {
   const wanted = args.chains ? new Set(args.chains) : null;
-  const current = previous.stores.filter((e) => e.pv === PARSER_VERSION);
-  const missing = selectCarryOver(current, new Set(stores.map((s) => s.id)), today).filter(
-    (e) => !wanted || wanted.has(e.c),
-  );
-  const results = await mapPool(missing, 8, async (entry) => {
-    writeFileSync(join(args.out, entry.f), await request(`${base}${entry.f}`));
-    return entry;
+  // Only stores built by this parser, from the chains asked for, that are real shops.
+  const usable = (e: StoreEntry) => e.pv === PARSER_VERSION && (!wanted || wanted.has(e.c)) && !isOnlineStorefront(e.n);
+  const fromFolderList: CarryCandidate[] = (folder?.stores ?? [])
+    .filter((e) => usable(e) && existsSync(join(args.fallback!, e.f)))
+    .map((entry) => ({ id: entry.id, u: entry.u, entry, from: 'folder' }));
+  const fromSiteList: CarryCandidate[] = (site?.stores ?? [])
+    .filter(usable)
+    .map((entry) => ({ id: entry.id, u: entry.u, entry, from: 'site' }));
+
+  const have = new Set(stores.map((s) => s.id));
+  // The folder is listed first, so it wins a tie (no download needed).
+  const chosen = selectCarryOver([...fromFolderList, ...fromSiteList], have, today);
+  const folderBest = new Map(selectCarryOver(fromFolderList, have, today).map((c) => [c.id, c]));
+
+  const copyFromFolder = (c: CarryCandidate) => {
+    copyFileSync(join(args.fallback!, c.entry.f), join(args.out, c.entry.f));
+    return c;
+  };
+  const results = await mapPool(chosen, 8, async (c) => {
+    if (c.from === 'folder') return copyFromFolder(c);
+    try {
+      writeFileSync(join(args.out, c.entry.f), await request(`${siteBase(args)}${c.entry.f}`));
+      return c;
+    } catch (err) {
+      // The site's copy could not be fetched: an older one from the folder beats none.
+      const older = folderBest.get(c.id);
+      if (!older) throw err;
+      return copyFromFolder(older);
+    }
   });
-  let count = 0;
+
+  const fromFolder = new Set<string>();
+  const fromSite = new Set<string>();
   for (const r of results) {
     if (!r.ok) continue;
-    stores.push(r.value);
-    count++;
+    stores.push(r.value.entry);
+    (r.value.from === 'folder' ? fromFolder : fromSite).add(r.value.id);
   }
-  return count;
+  return { fromFolder, fromSite };
 }
 
 async function main() {
@@ -318,6 +369,23 @@ async function main() {
   const today = israelDate().iso;
   const chains = args.chains ? CHAINS.filter((c) => args.chains!.includes(c.id)) : CHAINS;
   if (!chains.length) throw new Error(`No matching chains. Available: ${CHAINS.map((c) => c.id).join(', ')}`);
+
+  // What this run replaces, read before the long download so a run that cannot be checked
+  // stops early. Without either, the chains fetched from Israel would silently disappear.
+  const folderIndex = loadFolderIndex(args);
+  const siteIndex = await loadSiteIndex(args);
+  const baseline = chooseBaseline(
+    siteIndex?.stores ?? null,
+    folderIndex?.stores ?? null,
+    !!args.previousUrl,
+    chains.map((c) => c.id),
+  );
+  if (baseline.error && !args.allowShrink) {
+    throw new Error(
+      `Could not read ${siteBase(args)}index.json and there is no --fallback data either, so the stores ` +
+        'this run cannot fetch itself would vanish. Not writing an index. Pass --allow-shrink for a first deploy.',
+    );
+  }
 
   rmSync(join(args.out, 's'), { recursive: true, force: true });
   mkdirSync(join(args.out, 's'), { recursive: true });
@@ -327,7 +395,7 @@ async function main() {
   const stores: StoreEntry[] = [];
   const failedChains: string[] = [];
   // Chains live on different hosts, so they can run side by side without hammering anyone.
-  const previous = loadPrevious(args);
+  const previous = loadPrevious(args, folderIndex);
   const sources = new Map<string, Source>();
   const perChain = await mapPool(chains, 4, (chain) => syncChain(chain, args, today, previous, sources));
   perChain.forEach((r, i) => {
@@ -339,16 +407,33 @@ async function main() {
   });
 
   const fresh = stores.length;
-  const fromFolder = carryOverFromFolder(args, stores, today);
-  const fromSite = await carryOverFromSite(args, stores, today);
-  if (fromFolder) console.log(`  kept ${fromFolder} stores from ${args.fallback}`);
-  if (fromSite) console.log(`  kept ${fromSite} stores from the published site`);
+  const { fromFolder, fromSite } = await carryOver(args, stores, today, folderIndex, siteIndex);
+  if (fromFolder.size) console.log(`  kept ${fromFolder.size} stores from ${args.fallback}`);
+  if (fromSite.size) console.log(`  kept ${fromSite.size} stores from the published site`);
 
   if (stores.length < args.minStores) {
     throw new Error(
       `Only ${stores.length} stores were produced (expected at least ${args.minStores}). ` +
         'Not writing an index, so a deploy that depends on this run will not replace good data.',
     );
+  }
+
+  // Compare with what this run replaces: the published site, else the fallback folder (which
+  // only holds some chains, so only those are compared). A run limited to some cities or a few
+  // stores per chain is a test, not a replacement.
+  if (baseline.stores && !args.cities && !(args.limit > 0)) {
+    // Online storefronts are left out now; an earlier set that still lists them is not "more".
+    const before = baseline.stores.filter((s) => !isOnlineStorefront(s.n));
+    const problems = shrinkProblems(before, stores, today, baseline.chains);
+    if (problems.length) {
+      const what =
+        `Far fewer stores than the data set this replaces (${baseline.from === 'site' ? 'the published site' : args.fallback}): ` +
+        `${problems.join('; ')}.`;
+      if (!args.allowShrink) {
+        throw new Error(`${what} Not writing an index, so the current data stays online. Pass --allow-shrink if this is expected.`);
+      }
+      console.warn(`  ${what} Writing it anyway (--allow-shrink).`);
+    }
   }
 
   stores.sort((a, b) => a.city.localeCompare(b.city, 'he') || a.c.localeCompare(b.c) || a.n.localeCompare(b.n, 'he'));
@@ -369,18 +454,15 @@ async function main() {
   };
   writeFileSync(join(args.out, 'index.json'), JSON.stringify(index));
   if (args.reuse) {
-    const written = new Set(stores.map((st) => st.id));
-    writeFileSync(
-      join(args.out, 'sources.json'),
-      JSON.stringify(Object.fromEntries([...sources].filter(([id]) => written.has(id)))),
-    );
+    const record = reuseRecord(stores.map((s) => s.id), sources, fromFolder, previous.sources);
+    writeFileSync(join(args.out, 'sources.json'), JSON.stringify(record));
   }
 
   const totalMb = stores.reduce((n, s) => n + s.z, 0) / 1e6;
   console.log(
     `Done in ${Math.round((Date.now() - started) / 1000)}s: ${stores.length} stores, ` +
       `${new Set(stores.map((s) => s.city)).size} cities, ${totalMb.toFixed(1)} MB compressed.` +
-      ` Fresh: ${fresh}, kept from earlier runs: ${fromFolder + fromSite}.` +
+      ` Fresh: ${fresh}, kept from earlier runs: ${fromFolder.size + fromSite.size}.` +
       (failedChains.length ? ` Chains that failed: ${failedChains.join(', ')}.` : ''),
   );
 }

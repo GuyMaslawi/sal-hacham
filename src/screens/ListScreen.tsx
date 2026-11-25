@@ -8,7 +8,7 @@ import { startList } from '../lib/listInput';
 import { canDictate } from '../lib/speech';
 import { costFor, promoLabel } from '../lib/pricing';
 import { qtyUnit, storeTitle, useComparison, usePricingOptions, useStoreLookup } from '../lib/view';
-import { stepFor, useApp } from '../state/app';
+import { fitQty, stepFor, useApp } from '../state/app';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
 import type { ListItem, Promo } from '../types';
@@ -70,7 +70,7 @@ export function ListScreen() {
   // The page itself stays put: the products scroll inside their own box, so the search bar,
   // the cheapest store and the way to the next step are always on screen.
   return (
-    <div className="flex h-[calc(100dvh-4.75rem-env(safe-area-inset-bottom))] flex-col">
+    <div className="flex h-[calc(100dvh-4.75rem-env(safe-area-inset-bottom)-var(--status-h,0px))] flex-col">
       <div className="shrink-0">
         {/* With large text the explanation would leave little room for the products themselves. */}
         <ScreenHeader title="הרשימה שלי">
@@ -342,7 +342,9 @@ function BestStoreBanner() {
   const store = best && lookup(best.storeId);
   if (!best || !store || comparison.pricedCount === 0) return null;
 
-  const dearest = comparison.quotes[comparison.quotes.length - 1];
+  // A store that sells nothing from the list has no price of its own to compare.
+  const priced = comparison.quotes.filter((q) => q.lines.length > 0);
+  const dearest = priced[priced.length - 1] ?? best;
   const gap = dearest.estimate - best.estimate;
   return (
     <button
@@ -356,11 +358,11 @@ function BestStoreBanner() {
         <span className="mt-0.5 block text-sm opacity-75">
           {best.missing.length > 0 ? (
             <>כולל הערכה {best.missing.length === 1 ? 'למוצר אחד שחסר' : `ל-${best.missing.length} מוצרים שחסרים`} שם</>
-          ) : comparison.quotes.length > 1 && gap >= 0.5 ? (
+          ) : priced.length > 1 && gap >= 0.5 ? (
             <>
               <Price value={gap} /> פחות מהיקר ביותר
             </>
-          ) : comparison.quotes.length > 1 ? (
+          ) : priced.length > 1 ? (
             <>כמעט אותו מחיר בכל הסניפים</>
           ) : (
             <>הוסף עוד סניף כדי להשוות</>
@@ -387,10 +389,12 @@ function UnmatchedRow({ item }: { item: ListItem }) {
   const catalog = useData((s) => s.catalog);
   const opts = usePricingOptions();
   const guess = useMemo(() => searchProducts(catalog, item.label, { limit: 1 })[0], [catalog, item.label]);
-  const guessPrice = useMemo(
-    () => (guess ? Math.min(...[...guess.offers.values()].map((o) => costFor(o, 1, guess.weighted, opts).total)) : 0),
-    [guess, opts],
-  );
+  // For the amount the line will have once confirmed (kilos or whole packages).
+  const guessPrice = useMemo(() => {
+    if (!guess) return 0;
+    const qty = fitQty(item.qty, item.kg, guess);
+    return Math.min(...[...guess.offers.values()].map((o) => costFor(o, qty, guess.weighted, opts).total));
+  }, [guess, opts, item.qty, item.kg]);
   const choose = () => open({ kind: 'search', mode: { kind: 'match', itemId: item.id, query: item.label } });
 
   return (
@@ -466,6 +470,9 @@ function ListRow({ item, prices }: { item: ListItem; prices: RowPrices | undefin
                 </span>
               ) : null}
             </>
+          ) : storeCount === 0 ? (
+            // Nothing downloaded yet: not knowing the price is not the same as "not sold".
+            <span className="text-muted">המחירים עוד יורדים</span>
           ) : (
             <span className="text-alert">לא נמכר בסניפים שבחרת</span>
           )}

@@ -41,7 +41,9 @@ export function CompareScreen() {
   }
 
   const best = quotes[0];
-  const dearest = quotes[quotes.length - 1];
+  // A store that sells nothing from the list has no price of its own to compare.
+  const priced = quotes.filter((q) => q.lines.length > 0);
+  const dearest = priced[priced.length - 1] ?? best;
   const spread = dearest.estimate - best.estimate;
   const byId = new Map(items.map((i) => [i.id, i]));
   // When the cheapest store lacks items, also point out the cheapest store that has them all.
@@ -54,7 +56,7 @@ export function CompareScreen() {
 
       <p className="-mt-1 px-5 pb-3 text-muted">
         {pricedCount === 1 ? 'מוצר אחד' : `${pricedCount} מוצרים`} {quotes.length === 1 ? 'בסניף אחד' : `ב-${quotes.length} סניפים`}.{' '}
-        {quotes.length > 1 ? (
+        {priced.length > 1 ? (
           spread >= 0.5 ? (
             <>
               ההפרש בין הזול ליקר: <Price value={spread} className="font-bold text-ink" />.{' '}
@@ -302,8 +304,20 @@ function SplitCard({ split, items }: { split: SplitPlan; items: Map<string, List
             שתי עצירות במקום אחת, וחוסכים <Price value={split.saving} /> לעומת הסניף הזול ביותר.
           </p>
         </div>
-        <PriceTag value={split.total} />
+        <span className="flex shrink-0 flex-col items-end gap-1">
+          {/* The same comparable number as the store cards: what is missing in both is estimated. */}
+          <PriceTag
+            value={split.estimate}
+            label={split.missing.length ? `${formatPrice(split.estimate)}, כולל הערכה למה שחסר` : undefined}
+          />
+          {split.missing.length ? <span className="text-xs font-semibold">כולל הערכה</span> : null}
+        </span>
       </div>
+      {split.missing.length ? (
+        <p className="bg-surface px-4 pt-3 text-sm text-muted">
+          לא נמכר באף אחד מהשניים: {split.missing.map((id) => items.get(id)?.label ?? '').filter(Boolean).join(', ')}
+        </p>
+      ) : null}
       <div className="perforated bg-surface text-ink">
         {split.stores.map((part) => {
           const store = lookup(part.storeId);
@@ -451,7 +465,7 @@ function MissingItem({ item, store }: { item: ListItem; store: StoreInfo }) {
             className="min-h-10 shrink-0 rounded-full px-3 text-sm"
             onClick={() => {
               useApp.getState().attachProduct(item.id, instead, false);
-              toast('התחליף נוסף. הסניף הזה מחושב עכשיו עם המוצר הדומה');
+              toast('המוצר הדומה נוסף לשורה, ומעכשיו הוא נחשב בהשוואה');
             }}
           >
             זה מתאים

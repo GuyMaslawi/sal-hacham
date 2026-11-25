@@ -1,19 +1,40 @@
 // Hebrew-aware text helpers for search and for parsing pasted shopping lists.
 
-/** Lowercase, drop niqqud and quote marks, fold final letters, keep letters/digits/%. */
+/**
+ * Lowercase, drop niqqud and quote marks, fold final letters, keep letters/digits/%.
+ * Doubled ו and י are folded too, so both spellings meet: "קריית ביאליק" finds "קרית ביאליק",
+ * "וויסקי" finds "ויסקי".
+ */
 export function normalize(s: string): string {
   return s
     .toLowerCase()
+    // The Hebrew hyphen (maqaf) separates words, like "-": "חד־פעמי" is "חד פעמי".
+    .replace(/־/g, ' ')
     .replace(/[֑-ׇ]/g, '')
-    .replace(/["'׳״`´]/g, '')
+    // Straight and curly quotes alike (iPhones and Word type curly ones): "צ’יפס" is "צ'יפס".
+    .replace(/["'׳״`´‘’“”„]/g, '')
     .replace(/[^0-9a-zא-ת%.]+/g, ' ')
     .replace(/ך/g, 'כ')
     .replace(/ם/g, 'מ')
     .replace(/ן/g, 'נ')
     .replace(/ף/g, 'פ')
     .replace(/ץ/g, 'צ')
+    .replace(/וו+/g, 'ו')
+    .replace(/יי+/g, 'י')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Other ways a shopper may write the same Hebrew word: a plural for the singular that produce is
+ * sold under ("עגבניות" → "עגבניה", "מלפפונים" → "מלפפונ"). `word` must already be normalized.
+ */
+export function wordForms(word: string): string[] {
+  if (word.length < 5) return [];
+  const base = word.slice(0, -2);
+  if (word.endsWith('ות')) return [`${base}ה`, `${base}ת`];
+  if (word.endsWith('ימ')) return [base, `${base}ה`];
+  return [];
 }
 
 export const tokens = (s: string) => normalize(s).split(' ').filter(Boolean);
@@ -30,6 +51,8 @@ export const stripDirectionMarks = (s: string) => s.replace(/[\u200e\u200f\u202a
 export interface ParsedLine {
   label: string;
   qty: number;
+  /** The quantity was given in kilos ("חצי קילו גבינה"), not as a count. */
+  kg?: boolean;
 }
 
 /**
@@ -38,7 +61,14 @@ export interface ParsedLine {
  */
 export function parseShoppingList(text: string): ParsedLine[] {
   const out: ParsedLine[] = [];
-  for (const rawLine of stripDirectionMarks(text).split(/[\n,;]+/)) {
+  const tidy = stripDirectionMarks(text)
+    // Curly quotes, as iPhones and Word type them: ק”ג is ק"ג.
+    .replace(/[“”„]/g, '"')
+    .replace(/[‘’]/g, "'")
+    // "1/2 קילו", "½ קילו".
+    .replace(/(^|\s)(?:1\/2|½)(?=\s*(?:ק"ג|ק״ג|קג|קילו))/g, '$1חצי');
+  // A comma between digits is a decimal point ("1,5 ק"ג"), not a new item.
+  for (const rawLine of tidy.split(/\n|;|(?<!\d),|,(?!\d)/)) {
     let line = spokenToWritten(
       rawLine
         .replace(/^[\s\-–•*·▪◦☐☑✓✔✅⬜🔲]+/u, '')
@@ -48,11 +78,12 @@ export function parseShoppingList(text: string): ParsedLine[] {
     // Headings, not products: "רשימה לסופר:", "ירקות:", "רשימת קניות".
     if (!line || /:$/.test(line) || HEADING.test(line)) continue;
     let qty = 1;
+    let kg = false;
 
     const KILO = `(?:ק"ג|ק״ג|קג|קילו)`;
-    // "קילו עגבניות" said without a number means one kilo.
+    // "קילו עגבניות" or "עגבניות קילו" without a number means one kilo.
     const kiloLead = new RegExp(`^(\\d+(?:[.,]\\d+)?|חצי)?\\s*${KILO}\\s+`).exec(line);
-    const kiloTrail = new RegExp(`\\s+(\\d+(?:[.,]\\d+)?|חצי)\\s*${KILO}$`).exec(line);
+    const kiloTrail = new RegExp(`\\s+(?:(\\d+(?:[.,]\\d+)?|חצי)\\s*)?${KILO}$`).exec(line);
     const multiplier = /\s*[x×*]\s*(\d{1,2})$/i.exec(line) ?? /^(\d{1,2})\s*[x×*]\s*/i.exec(line) ?? /^[x×*]\s*(\d{1,2})\s+/i.exec(line);
     const unitsSuffix = /\s*[-–:]?\s*(\d{1,2})\s*(?:יח'?|יחידות|חבילות|אריזות|בקבוקים|קרטונים)$/.exec(line);
     // A bare number counts as a quantity only when it is small: "12 ביצים" or "ביצים 30" is a
@@ -63,9 +94,11 @@ export function parseShoppingList(text: string): ParsedLine[] {
 
     if (kiloLead) {
       qty = kilos(kiloLead);
+      kg = true;
       line = line.slice(kiloLead[0].length);
     } else if (kiloTrail) {
       qty = kilos(kiloTrail);
+      kg = true;
       line = line.slice(0, kiloTrail.index);
     } else if (multiplier) {
       qty = Number(multiplier[1]);
@@ -73,7 +106,8 @@ export function parseShoppingList(text: string): ParsedLine[] {
     } else if (unitsSuffix) {
       qty = Number(unitsSuffix[1]);
       line = line.slice(0, unitsSuffix.index);
-    } else if (leading && !/^\d+\s*(%|גרם|ג'|מ"ל|מל|ליטר)/.test(line)) {
+    } else if (leading && !/^\d+\s*(?:%|גרם|ג'|מ"ל|מל|ליטר)(?![א-ת])/.test(line)) {
+      // ("3 מלפפונים" is three cucumbers; only "3 מל" on its own is a size.)
       qty = Number(leading[1]);
       line = line.slice(leading[0].length);
     } else if (trailing && !/%\s*$/.test(line)) {
@@ -85,7 +119,7 @@ export function parseShoppingList(text: string): ParsedLine[] {
       .replace(/\s+/g, ' ')
       .replace(/[\s\-–:.]+$/, '')
       .trim();
-    if (label) out.push({ label, qty: Math.min(Math.max(Math.round(qty * 2) / 2, 0.5), 99) });
+    if (label) out.push({ label, qty: Math.min(Math.max(Math.round(qty * 2) / 2, 0.5), 99), ...(kg ? { kg } : {}) });
   }
   return out;
 }
@@ -125,6 +159,9 @@ const PACK_WORD = /^(?:חבילות|חבילה|בקבוקים|בקבוק|יחי�
 /** Write spoken quantities as digits: "שני קילו עגבניות" → "2 קילו עגבניות", "חלב שתיים" → "חלב 2". */
 function spokenToWritten(line: string): string {
   let s = line;
+  // A fat percentage said out loud: "חלב שלוש אחוז" is "חלב 3%".
+  s = s.replace(new RegExp(`(^|\\s)(${NUMBER_WORD})\\s+אחוז(?=\\s|$)`, 'g'), (_, sp: string, w: string) => `${sp}${NUMBER_WORDS[w]}%`);
+  s = s.replace(/(\d+(?:[.,]\d+)?)\s*אחוז(?=\s|$)/g, '$1%');
   for (let i = 0; i < 3 && SPOKEN_LEAD.test(s); i++) s = s.replace(SPOKEN_LEAD, '');
   // "ושני לחמים" in the middle of a dictated list.
   s = s.replace(new RegExp(`^ו(?=(?:${NUMBER_WORD})\\s)`), '');

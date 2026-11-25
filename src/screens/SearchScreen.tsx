@@ -254,6 +254,7 @@ function ResultRow({
 /** What each chosen store charges for one unit, cheapest first. */
 function StorePrices({ product }: { product: Product }) {
   const stores = useChosenStores();
+  const loaded = useData((s) => s.catalog.storeIds);
   const index = useData((s) => s.index);
   const opts = usePricingOptions();
   const rows = stores
@@ -275,7 +276,7 @@ function StorePrices({ product }: { product: Product }) {
           <span className="flex shrink-0 items-center gap-2">
             {deal && deal.minQty > 1 ? <DealChip club={deal.club}>{promoLabel(deal)}</DealChip> : null}
             {price === null ? (
-              <span className="text-muted">לא נמכר</span>
+              <span className="text-muted">{loaded.includes(store.id) ? 'לא נמכר' : 'עוד לא ירד'}</span>
             ) : (
               <Price value={price} className={price === cheapest && rows.length > 1 ? 'font-bold text-save' : undefined} />
             )}

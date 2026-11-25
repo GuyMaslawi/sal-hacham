@@ -84,7 +84,12 @@ export function ItemSheet({ itemId }: { itemId: string }) {
           <ul className="perforated">
             {rows.map(({ store, line }) => (
               <li key={store.id} className="py-3">
-                {line ? (
+                {!line && !catalog.storeIds.includes(store.id) ? (
+                  <p className="flex items-center justify-between gap-3">
+                    <span className="leading-snug font-medium">{storeTitle(store, index)}</span>
+                    <span className="text-sm text-muted">המחירים עוד לא ירדו</span>
+                  </p>
+                ) : line ? (
                   <PricedRow
                     store={store}
                     title={storeTitle(store, index)}
@@ -156,7 +161,7 @@ function PricedRow({
   const per = unitPrice(product, line.total / qty);
   // A multi-buy deal this store offers that the current quantity does not reach yet.
   const offer = product.offers.get(store.id);
-  const hint = offer ? nextDeal(offer, qty, opts) : null;
+  const hint = offer ? nextDeal(offer, qty, opts, product.weighted) : null;
   return (
     <div className="flex items-start gap-3">
       <div className="min-w-0 flex-1">

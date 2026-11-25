@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { cleanRecognizedText, parseShoppingList } from './text';
+import { cleanRecognizedText, normalize, parseShoppingList, wordForms } from './text';
+
+describe('normalize', () => {
+  it('lets both Hebrew spellings of a word meet', () => {
+    expect(normalize('קריית ביאליק')).toBe(normalize('קרית ביאליק'));
+    expect(normalize('קרית-ביאליק')).toBe(normalize('קרית ביאליק'));
+    expect(normalize('וויסקי')).toBe(normalize('ויסקי'));
+  });
+
+  it('offers the singular forms of a plural', () => {
+    expect(wordForms(normalize('עגבניות'))).toContain(normalize('עגבניה'));
+    expect(wordForms(normalize('מלפפונים'))).toContain(normalize('מלפפון'));
+    expect(wordForms(normalize('ביצים'))).toContain(normalize('ביצה'));
+    expect(wordForms(normalize('חלב'))).toEqual([]);
+  });
+});
 
 const parse = (s: string) => parseShoppingList(s).map((l) => `${l.qty} ${l.label}`);
 
@@ -57,5 +72,11 @@ describe('cleanRecognizedText', () => {
 
   it('drops lines that are mostly noise', () => {
     expect(cleanRecognizedText('ה ה ש 0 |\n%%% 12 ab\nעגבניות')).toBe('עגבניות');
+  });
+});
+
+describe('spoken percentages', () => {
+  it('writes a percentage said out loud as a number', () => {
+    expect(parseShoppingList('חלב שלוש אחוז\nקוטג 5 אחוז').map((l) => l.label)).toEqual(['חלב 3%', 'קוטג 5%']);
   });
 });

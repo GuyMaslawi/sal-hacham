@@ -66,12 +66,27 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
 
   const startVoice = () => {
     if (dictation.current) return;
-    const before = textRef.current;
+    // Dictation reports everything heard so far each time. It owns the box only while nobody else
+    // touched it: once the shopper types or pastes, their text stays and only lines heard after
+    // that are added.
+    let base = textRef.current;
+    let used = 0;
+    let wrote = base;
+    let written = 0;
     setNote(null);
     setActivity({ kind: 'listening', current: '' });
     dictation.current = startDictation({
       onText: (heard, current) => {
-        setText(appendLines(before, heard.flatMap((line) => splitRef.current(line))));
+        const parts = heard.flatMap((line) => splitRef.current(line));
+        if (textRef.current !== wrote) {
+          base = textRef.current;
+          used = written;
+        }
+        const next = appendLines(base, parts.slice(used));
+        wrote = next;
+        written = parts.length;
+        textRef.current = next;
+        setText(next);
         setActivity((a) => (a.kind === 'listening' ? { kind: 'listening', current } : a));
       },
       onEnd: (error) => {
@@ -150,7 +165,12 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
 
   useEffect(() => () => void (picture && URL.revokeObjectURL(picture)), [picture]);
 
+  // The sheet stays on screen until the browser confirms the step back; a second tap meanwhile
+  // must not add the whole list again.
+  const added = useRef(false);
   const add = () => {
+    if (added.current) return;
+    added.current = true;
     stopVoice();
     useApp.getState().addFreeText(lines);
     toast(lines.length === 1 ? 'מוצר אחד נוסף לרשימה' : `${lines.length} מוצרים נוספו לרשימה`);

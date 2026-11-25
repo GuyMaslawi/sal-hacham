@@ -49,7 +49,11 @@ export function Scanner() {
   // Read the catalog through a ref so a data refresh does not restart the camera.
   const catalogRef = useRef(catalog);
   catalogRef.current = catalog;
-  const lookup = useCallback((code: string) => {
+  // The package just scanned is usually still in front of the camera when scanning resumes;
+  // reading it again at once would show the same product a second time.
+  const resumedAt = useRef({ code: '', at: 0 });
+  const lookup = useCallback((code: string, typed = false) => {
+    if (!typed && code === resumedAt.current.code && Date.now() - resumedAt.current.at < 3000) return;
     paused.current = true;
     buzz(40);
     setResult({ code, product: findByBarcode(catalogRef.current, code) });
@@ -83,6 +87,9 @@ export function Scanner() {
       try {
         detector = await createDetector();
       } catch {
+        // No reader means the camera is of no use: turn it off rather than leave its light on.
+        stream.getTracks().forEach((t) => t.stop());
+        video.srcObject = null;
         setCameraError('קורא הברקודים לא נטען. אפשר להקליד את הברקוד למטה.');
         return;
       }
@@ -110,6 +117,7 @@ export function Scanner() {
 
   const [added, setAdded] = useState(0);
   const again = () => {
+    resumedAt.current = { code: result?.code ?? '', at: Date.now() };
     setResult(null);
     paused.current = false;
   };
@@ -142,7 +150,7 @@ export function Scanner() {
               className="mt-4 flex gap-2"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (manual.trim().length >= 6) lookup(manual);
+                if (manual.trim().length >= 6) lookup(manual, true);
                 else toast('ברקוד קצר מדי');
               }}
             >

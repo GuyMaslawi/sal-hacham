@@ -123,9 +123,11 @@ export function suggestStores(index: DataIndex, origin: Point, opts: SuggestOpti
     if (chains.size >= ENOUGH_CHAINS) break;
   }
 
-  // Within the area: nearer city first (in 3 km steps, so a slightly farther big branch can
-  // win), then the better format, then the wider range of products.
+  // Within the area: a full supermarket before a small format (express, pharmacy) whatever the
+  // distance, then the nearer city (in 3 km steps, so a slightly farther big branch can win),
+  // then the better format, then the wider range of products.
   const better = (a: { store: StoreInfo; d: number }, b: { store: StoreInfo; d: number }) =>
+    Number(isMinorFormat(a.store)) - Number(isMinorFormat(b.store)) ||
     Math.round(a.d / 3) - Math.round(b.d / 3) ||
     formatRank(a.store) - formatRank(b.store) ||
     b.store.itemCount - a.store.itemCount;

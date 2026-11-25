@@ -10,6 +10,7 @@
 //
 //   npm run deploy:israel -- --chains carrefour,victory   only these chains
 //   npm run deploy:israel -- --no-rebuild                 upload only, do not trigger a rebuild
+//   npm run deploy:israel -- --allow-shrink               upload even if a chain lost many stores
 //   node scripts/sync/israel-only.ts --hourly             for the hourly job on Guy's Mac
 //
 // --hourly builds on the previous run's data kept on this computer instead of downloading the
@@ -95,6 +96,7 @@ run(process.execPath, [
   '--out', '.local-data/data',
   '--fallback', '.local-data/prev/data',
   ...(hourly ? ['--reuse'] : []),
+  ...(flag('allow-shrink') ? ['--allow-shrink'] : []),
 ]);
 rmSync('.local-data/prev', { recursive: true, force: true });
 

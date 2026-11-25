@@ -42,8 +42,11 @@ interface DataState {
 const within = <T>(promise: Promise<T>, ms: number, fallback: T) =>
   Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms))]);
 
+type RefreshResult = { updated: number; failed: number; offline: boolean };
+
 export const useData = create<DataState>()((set, get) => {
   let initStarted = false;
+  let running: Promise<RefreshResult> | null = null;
 
   const rebuild = () => {
     const { datasets, index } = get();
@@ -65,7 +68,7 @@ export const useData = create<DataState>()((set, get) => {
   const download = async (store: StoreInfo): Promise<boolean> => {
     setLoading(store.id, 'loading');
     try {
-      const data = await fetchStoreData(store);
+      const data: StoreData = { ...(await fetchStoreData(store)), z: store.size };
       // The shopper may have removed the store while it was downloading.
       if (!chosen(store.id)) {
         setLoading(store.id, null);
@@ -147,54 +150,67 @@ export const useData = create<DataState>()((set, get) => {
       rebuild();
     },
 
-    async refresh() {
-      if (get().refreshing) return { updated: 0, failed: 0, offline: false };
-      set({ refreshing: true });
-      try {
-        let index: DataIndex;
-        try {
-          index = await fetchIndex();
-        } catch (err) {
-          if (!get().index) set({ indexError: err instanceof Error ? err.message : String(err) });
-          return { updated: 0, failed: 0, offline: true };
-        }
-        // A chain's portal can be down for a day. Keep the shopper's stores from that chain
-        // (with their last known prices) instead of making them vanish from the comparison.
-        const previous = get().index;
-        const chosen = useApp.getState().storeIds;
-        const published = new Set(index.stores.map((s) => s.id));
-        const kept = previous?.stores.filter((s) => chosen.includes(s.id) && !published.has(s.id)) ?? [];
-        if (kept.length) {
-          const chainIds = new Set(index.chains.map((c) => c.id));
-          index = {
-            ...index,
-            stores: [...index.stores, ...kept],
-            chains: [...index.chains, ...(previous?.chains.filter((c) => !chainIds.has(c.id)) ?? [])],
-          };
-        }
-        set({ index, indexError: null });
-        void saveCachedIndex(index);
-
-        // A chosen store that no list knows any more (closed, or saved by a much older version)
-        // would silently take one of the eight places; let it go.
-        const known = new Set(index.stores.map((s) => s.id));
-        const app = useApp.getState();
-        if (app.storeIds.some((id) => !known.has(id))) app.setStoreIds(app.storeIds.filter((id) => known.has(id)));
-
-        const byId = new Map(index.stores.map((s) => [s.id, s]));
-        const stale = useApp
-          .getState()
-          .storeIds.map((id) => byId.get(id))
-          .filter((s): s is StoreInfo => !!s && (get().datasets[s.id]?.u ?? '') < s.updatedAt);
-        const results = await Promise.all(stale.map(download));
-        rebuild();
-        const updated = results.filter(Boolean).length;
-        return { updated, failed: results.length - updated, offline: false };
-      } finally {
-        set({ refreshing: false });
-      }
+    refresh() {
+      // A second request while one is running waits for it, rather than reporting "nothing new".
+      running ??= refreshNow().finally(() => {
+        running = null;
+      });
+      return running;
     },
   };
+
+  async function refreshNow(): Promise<RefreshResult> {
+    set({ refreshing: true });
+    try {
+      let index: DataIndex;
+      try {
+        index = await fetchIndex();
+      } catch (err) {
+        if (!get().index) set({ indexError: err instanceof Error ? err.message : String(err) });
+        return { updated: 0, failed: 0, offline: true };
+      }
+      // A chain's portal can be down for a day. Keep the shopper's stores from that chain
+      // (with their last known prices) instead of making them vanish from the comparison.
+      const previous = get().index;
+      const chosen = useApp.getState().storeIds;
+      const published = new Set(index.stores.map((s) => s.id));
+      const kept = previous?.stores.filter((s) => chosen.includes(s.id) && !published.has(s.id)) ?? [];
+      if (kept.length) {
+        const chainIds = new Set(index.chains.map((c) => c.id));
+        index = {
+          ...index,
+          stores: [...index.stores, ...kept],
+          chains: [...index.chains, ...(previous?.chains.filter((c) => !chainIds.has(c.id)) ?? [])],
+        };
+      }
+      set({ index, indexError: null });
+      void saveCachedIndex(index);
+
+      // A chosen store that no list knows any more (closed, or saved by a much older version)
+      // would silently take one of the eight places; let it go.
+      const known = new Set(index.stores.map((s) => s.id));
+      const app = useApp.getState();
+      if (app.storeIds.some((id) => !known.has(id))) app.setStoreIds(app.storeIds.filter((id) => known.has(id)));
+
+      const byId = new Map(index.stores.map((s) => [s.id, s]));
+      const stale = useApp
+        .getState()
+        .storeIds.map((id) => byId.get(id))
+        .filter((s): s is StoreInfo => {
+          if (!s) return false;
+          const have = get().datasets[s.id];
+          // A newer price list, or the same one rebuilt (a fix to how it is read): either way
+          // the copy on the phone is out of date.
+          return !have || have.u < s.updatedAt || have.z !== s.size;
+        });
+      const results = await Promise.all(stale.map(download));
+      rebuild();
+      const updated = results.filter(Boolean).length;
+      return { updated, failed: results.length - updated, offline: false };
+    } finally {
+      set({ refreshing: false });
+    }
+  }
 });
 
 /** Today's date in Israel, for checking whether a deal is still valid. */

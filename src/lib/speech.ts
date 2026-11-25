@@ -125,9 +125,15 @@ function startWeb(events: DictationEvents): Dictation {
     rec.continuous = !oneItemPerSession;
     rec.interimResults = true;
     rec.maxAlternatives = 1;
-    rec.onaudiostart = keepAwake;
+    // Start the silence clock once. On Android every item is a new session; restarting the clock
+    // with each one would keep the microphone on forever when nobody speaks.
+    rec.onaudiostart = () => {
+      if (!quietTimer) keepAwake();
+    };
     const done = new Set<number>();
     rec.onresult = (e) => {
+      if (ended) return;
+      const before = `${heard.length}|${current}`;
       current = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const result = e.results[i];
@@ -138,7 +144,8 @@ function startWeb(events: DictationEvents): Dictation {
           done.add(i);
         } else current += (current ? ' ' : '') + words;
       }
-      keepAwake();
+      // Only new words count as not being quiet.
+      if (`${heard.length}|${current}` !== before) keepAwake();
       events.onText([...heard], current);
     };
     rec.onerror = (e) => {
@@ -158,7 +165,9 @@ function startWeb(events: DictationEvents): Dictation {
     try {
       rec.start();
     } catch {
-      end('failed');
+      // Report it after `startDictation` has returned, so the caller is not left holding a
+      // handle for a dictation that already ended.
+      queueMicrotask(() => end('failed'));
     }
   };
 
@@ -187,10 +196,18 @@ function startNative(events: DictationEvents): Dictation {
     quietTimer = window.setTimeout(stop, QUIET_LIMIT_MS);
   };
 
+  let lastWords = '';
   handles.push(
     NativeDictation.addListener('text', (e) => {
-      keepAwake();
-      events.onText((e.heard ?? []).map(stripDirectionMarks), stripDirectionMarks(e.current ?? ''));
+      const heard = (e.heard ?? []).map(stripDirectionMarks);
+      const current = stripDirectionMarks(e.current ?? '');
+      // The plugin also reports after each silence; only new words count as not being quiet.
+      const words = `${heard.join('\n')}|${current}`;
+      if (words !== lastWords) {
+        lastWords = words;
+        keepAwake();
+      }
+      events.onText(heard, current);
     }),
   );
   handles.push(

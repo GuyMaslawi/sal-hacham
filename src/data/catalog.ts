@@ -2,7 +2,7 @@
 // store charges for it. A handful of stores is a few tens of thousands of products, so plain
 // arrays and linear scans are fast enough and far simpler than an on-disk index.
 
-import { normalize, normalizeCode, tokens } from '../lib/text';
+import { normalize, normalizeCode, tokens, wordForms } from '../lib/text';
 import type { Product, StoreData, StoreInfo } from '../types';
 
 export interface Catalog {
@@ -89,7 +89,96 @@ export interface SearchOptions {
   storeId?: string;
 }
 
-/** Every query word must appear in the product name; best matches first. */
+/**
+ * Words that say how or where from something is sold, not what it is: "עגבניה במשקל" and
+ * "בננות ישראל" are just a tomato and bananas.
+ */
+const SOLD_AS = new Set(
+  'במשקל ארוז ארוזה ארוזים טרי טריה טריים שקיל בתפזורת לקג ישראל ישראלי ישראלית מובחר מובחרת מובחרים איכותי איכותית'
+    .split(' ')
+    .map(normalize),
+);
+/** One spelling for singular and plural, so "בננות" in one chain is "בננה" in another. */
+const singular = (w: string) => wordForms(w)[0] ?? w;
+const nameWords = (p: Product) =>
+  normalize(p.name)
+    .split(' ')
+    .map((w) => w.replace(/\.+$/, ''))
+    .filter((w) => w && !SOLD_AS.has(w))
+    .map(singular);
+
+interface SameName {
+  stores: Set<string>;
+  pids: string[];
+}
+
+/**
+ * Items each chain names and numbers its own way: in-house codes (produce, bakery, deli) and
+ * anything sold by weight, which some chains publish under a barcode of their own.
+ */
+const chainOwn = (p: Product) => p.weighted || p.pid.includes(':');
+const sameNameCache = new WeakMap<Catalog, Map<string, SameName>>();
+
+/**
+ * Produce and deli items carry each chain's own code, so a tomato is a different product in every
+ * chain. Group those by name and by how they are sold (by weight or by the unit), so "עגבניה" in
+ * one chain can stand for "עגבניה" in another.
+ */
+function sameNameGroup(catalog: Catalog, pid: string): SameName | undefined {
+  let byPid = sameNameCache.get(catalog);
+  if (!byPid) {
+    const groups = new Map<string, SameName>();
+    byPid = new Map();
+    for (const item of catalog.list) {
+      if (!chainOwn(item)) continue;
+      const words = nameWords(item).join(' ');
+      if (!words) continue;
+      const key = `${item.weighted ? 'w' : 'u'}|${words}`;
+      let g = groups.get(key);
+      if (!g) groups.set(key, (g = { stores: new Set(), pids: [] }));
+      for (const id of item.offers.keys()) g.stores.add(id);
+      g.pids.push(item.pid);
+      byPid.set(item.pid, g);
+    }
+    sameNameCache.set(catalog, byPid);
+  }
+  return byPid.get(pid);
+}
+
+/** How many of the chosen stores sell a product (or, for produce, the same thing by name), for ranking. */
+function reach(catalog: Catalog, p: Product): number {
+  if (!chainOwn(p)) return p.offers.size;
+  return Math.max(sameNameGroup(catalog, p.pid)?.stores.size ?? 0, p.offers.size);
+}
+
+/**
+ * The same produce or deli item in the other chains: same name, sold the same way, a similar
+ * package. Empty for products with a real barcode, which are the same product everywhere.
+ */
+export function sameProductElsewhere(catalog: Catalog, pid: string): Product[] {
+  const product = catalog.products.get(pid);
+  const group = product && sameNameGroup(catalog, product.pid);
+  if (!product || !group) return [];
+  const out: Product[] = [];
+  for (const other of group.pids) {
+    if (other === product.pid) continue;
+    const p = catalog.products.get(other);
+    if (!p) continue;
+    if (!product.weighted && product.qty > 0 && p.qty > 0) {
+      if (product.unit !== p.unit) continue;
+      const ratio = p.qty / product.qty;
+      if (ratio < 0.8 || ratio > 1.25) continue;
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+/**
+ * Every query word must appear in the product name; best matches first. A plural also finds the
+ * singular as a whole word ("עגבניות" finds "עגבניה"), and a product whose whole name is what the
+ * shopper wrote ranks above longer names that merely contain it.
+ */
 export function searchProducts(catalog: Catalog, query: string, opts: SearchOptions = {}): Product[] {
   const { limit = 60, storeId } = opts;
   const q = tokens(query);
@@ -100,6 +189,8 @@ export function searchProducts(catalog: Catalog, query: string, opts: SearchOpti
     if (hit && (!storeId || hit.offers.has(storeId))) return [hit];
   }
 
+  const forms = q.map((t) => [t, ...wordForms(t)]);
+  const allForms = new Set(forms.flat().map(singular));
   const scored: Array<{ p: Product; score: number }> = [];
   for (const p of catalog.list) {
     if (storeId && !p.offers.has(storeId)) continue;
@@ -107,21 +198,30 @@ export function searchProducts(catalog: Catalog, query: string, opts: SearchOpti
     let score = 0;
     let matched = true;
     for (let i = 0; i < q.length; i++) {
-      const t = q[i];
-      const at = norm.indexOf(t);
-      if (at < 0) {
+      let best = -1;
+      forms[i].forEach((form, k) => {
+        const at = norm.indexOf(form);
+        if (at < 0) return;
+        const startsWord = at === 0 || norm[at - 1] === ' ';
+        const end = at + form.length;
+        const endsWord = end === norm.length || norm[end] === ' ';
+        // Another form of the word counts only as a whole word: "ביצ" must not find "ביצועים".
+        if (k > 0 && !(startsWord && endsWord)) return;
+        let s = startsWord ? (endsWord ? (k > 0 ? 5.5 : 6) : 3) : 0;
+        if (at === 0 && i === 0) s += 5;
+        best = Math.max(best, s);
+      });
+      if (best < 0) {
         matched = false;
         break;
       }
-      const startsWord = at === 0 || norm[at - 1] === ' ';
-      const end = at + t.length;
-      const endsWord = end === norm.length || norm[end] === ' ';
-      if (startsWord) score += endsWord ? 6 : 3;
-      if (at === 0 && i === 0) score += 5;
+      score += best;
     }
     if (!matched) continue;
+    const words = nameWords(p);
+    if (words.length > 0 && words.every((w) => allForms.has(w))) score += 4;
     // Products stocked by more of the chosen stores are more useful to compare.
-    score += Math.min(p.offers.size, 6) * 1.5;
+    score += Math.min(reach(catalog, p), 6) * 1.5;
     score -= Math.min(norm.length, 60) / 30;
     scored.push({ p, score });
   }
@@ -130,8 +230,10 @@ export function searchProducts(catalog: Catalog, query: string, opts: SearchOpti
 }
 
 const NOISE = new Set(['גרם', 'גר', 'ג', 'מל', 'ליטר', 'ל', 'קג', 'יח', 'יחידות', 'של', 'עם', 'ב', 'מארז', 'בטעם']);
-const nameTokens = (p: Product) =>
-  new Set(tokens(p.name).filter((t) => t.length > 1 && !NOISE.has(t) && !/^[\d.%]+$/.test(t)));
+const FROZEN = /(?:^| )קפוא/;
+const ORGANIC = /(?:^| )אורגני/;
+const nameTokenList = (p: Product) => tokens(p.name).filter((t) => t.length > 1 && !NOISE.has(t) && !/^[\d.%]+$/.test(t));
+const nameTokens = (p: Product) => new Set(nameTokenList(p));
 
 /**
  * Products in `storeId` that could stand in for `product` there: same kind of package, similar
@@ -140,16 +242,22 @@ const nameTokens = (p: Product) =>
 export function suggestSubstitutes(catalog: Catalog, product: Product, storeId: string, limit = 3): Product[] {
   const want = nameTokens(product);
   if (!want.size) return [];
+  // The first word names what the thing is ("חזה עוף", "כנפיים עוף"); a stand-in must share it.
+  const kind = nameTokenList(product)[0];
   const scored: Array<{ p: Product; score: number }> = [];
   for (const p of catalog.list) {
     if (p.pid === product.pid || !p.offers.has(storeId)) continue;
     if (p.weighted !== product.weighted) continue;
+    // Frozen does not stand in for fresh, nor organic for regular (or the other way round).
+    if (FROZEN.test(p.norm) !== FROZEN.test(product.norm)) continue;
+    if (ORGANIC.test(p.norm) !== ORGANIC.test(product.norm)) continue;
     if (product.unit && p.unit && p.unit !== product.unit) continue;
     if (product.qty > 0 && p.qty > 0 && !product.weighted) {
       const ratio = p.qty / product.qty;
       if (ratio < 0.8 || ratio > 1.25) continue;
     }
     const have = nameTokens(p);
+    if (!have.has(kind)) continue;
     let shared = 0;
     for (const t of want) if (have.has(t)) shared++;
     if (!shared) continue;

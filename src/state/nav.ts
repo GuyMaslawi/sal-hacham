@@ -28,8 +28,11 @@ export type Overlay =
   | { kind: 'addList'; start: ListStart; photo?: Blob; clipboard?: Promise<string> }
   | { kind: 'scan' }
   | { kind: 'item'; itemId: string }
-  /** The manual store picker. `quick` sends a chosen city on to the suggestions. */
-  | { kind: 'stores'; quick?: boolean }
+  /**
+   * The manual store picker. `quick` sends a chosen city on to the suggestions; `city` is the
+   * branch list of one city, a step of its own so the phone's back button returns to the cities.
+   */
+  | { kind: 'stores'; quick?: boolean; city?: string }
   /** Suggested stores near the shopper, or around a chosen city. */
   | { kind: 'nearby'; city?: string }
   | { kind: 'help' }
@@ -43,6 +46,8 @@ interface NavState {
   open(overlay: Overlay): void;
   /** Close the top overlay, the same way the phone's back button does. */
   close(): void;
+  /** Close the top `count` overlays at once (a picker that went a few steps deep). */
+  closeSome(count: number): void;
 }
 
 /** How many history entries the current screen sits above the list. */
@@ -80,6 +85,13 @@ export const useNav = create<NavState>()((set, get) => ({
     backInFlight = true;
     // The popstate handler below does the actual closing.
     window.history.back();
+  },
+
+  closeSome: (count) => {
+    const n = Math.min(count, get().stack.length);
+    if (n <= 0 || backInFlight) return;
+    backInFlight = true;
+    window.history.go(-n);
   },
 }));
 

@@ -17,7 +17,8 @@ const SIZE_UNIT = /^(?:ליטר|ל'|גרם|גר|ג'|מ"ל|מל|אחוז|%)$/;
 const JOINERS = new Set(['וגם', 'גם', 'ועוד']);
 
 const isNumber = (w: string) => /^\d+(?:[.,]\d+)?$/.test(w) || NUMBER_WORDS.has(w);
-const isQtyStart = (w: string) => isNumber(w) || w === 'קילו' || w === 'חצי';
+// Only a small number starts a new item, as in the list parser: "ביצים 12" is a pack size.
+const isQtyStart = (w: string) => /^[1-9](?:[.,]\d+)?$/.test(w) || NUMBER_WORDS.has(w) || w === 'קילו' || w === 'חצי';
 const isSize = (w: string) => /^\d+(?:[.,]\d+)?%?$/.test(w) || SIZE_UNIT.test(w);
 
 // Words that describe the one before them and are never bought on their own: "שמנת מתוקה",
@@ -161,6 +162,8 @@ const describes = (w: string, stats: NameStats) => {
  */
 function splitContent(words: string[], stats: NameStats): string[][] {
   const n = words.length;
+  // A size said in words is a size too: "שלוש אחוז" in "חלב שלוש אחוז".
+  const sizeAt = words.map((w, i) => isSize(w) || (NUMBER_WORDS.has(w) && SIZE_UNIT.test(words[i + 1] ?? '')));
   // best[i]: the best split of words[0..i), and where its last piece starts.
   const best: Array<{ value: number; pieces: number; from: number }> = [{ value: 0, pieces: 0, from: 0 }];
   for (let i = 1; i <= n; i++) {
@@ -168,8 +171,8 @@ function splitContent(words: string[], stats: NameStats): string[][] {
     // Products are rarely named in more than four spoken words.
     for (let j = Math.max(0, i - 4); j < i; j++) {
       // A size ("1.5 ליטר", "3%") always belongs to the word before it.
-      if (j > 0 && isSize(words[j])) continue;
-      const content = words.slice(j, i).filter((w) => !isSize(w));
+      if (j > 0 && sizeAt[j]) continue;
+      const content = words.slice(j, i).filter((_, k) => !sizeAt[j + k]);
       let value = best[j].value;
       if (content.length > 1) {
         const join = joinValue(content, stats);

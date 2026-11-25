@@ -2,7 +2,8 @@
 
 import type { Offer, Product, Promo } from '../types';
 
-export const round2 = (n: number) => Math.round(n * 100) / 100;
+/** To the agora, rounding halves up the way a till does (1.005 is 1.01, not 1.00 as floating point would have it). */
+export const round2 = (n: number) => Number(`${Math.round(Number(`${n}e2`))}e-2`);
 
 export interface Cost {
   /** What the shopper pays. */
@@ -75,10 +76,12 @@ export function costFor(offer: Offer, qty: number, weighted: boolean, opts: Pric
 }
 
 /** A deal the shopper would unlock by adding a few more units. */
-export function nextDeal(offer: Offer, qty: number, opts: PricingOptions): Promo | null {
+export function nextDeal(offer: Offer, qty: number, opts: PricingOptions, weighted = false): Promo | null {
   let best: Promo | null = null;
   for (const p of offer.promos) {
     if (!usable(p, opts) || p.minQty <= qty) continue;
+    // By weight, a per-kilo deal with no real minimum already applies at any weight (see costFor).
+    if (weighted && p.minQty <= 1) continue;
     if (!best || p.minQty < best.minQty) best = p;
   }
   return best;

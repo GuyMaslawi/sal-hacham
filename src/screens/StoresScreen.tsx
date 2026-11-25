@@ -123,6 +123,7 @@ export function StoresScreen() {
               value={settings.splitThreshold}
               step={10}
               unit="₪"
+              min={0}
               onChange={(v) => setSettings({ splitThreshold: Math.min(200, Math.max(0, v)) })}
             />
           </div>
@@ -147,13 +148,13 @@ export function StoresScreen() {
 const NO_CITY = 'אחר';
 
 /** Pick stores: choose a city, then tap the branches you actually shop at. */
-export function StorePicker({ quick = false }: { quick?: boolean }) {
+export function StorePicker({ quick = false, city: startCity }: { quick?: boolean; city?: string }) {
   const close = useNav((s) => s.close);
   const open = useNav((s) => s.open);
   const index = useData((s) => s.index);
   const indexError = useData((s) => s.indexError);
   const chosen = useApp((s) => s.storeIds);
-  const [city, setCity] = useState<string | null>(null);
+  const city = startCity ?? null;
   const [query, setQuery] = useState('');
 
   // Every store with the text it can be found by.
@@ -201,11 +202,8 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
     return [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   }, [city, index, q, searchable]);
 
-  const back = () => {
-    if (!city) return close();
-    setCity(null);
-    setQuery('');
-  };
+  // The city's branches are a step of their own: back returns to the list of cities.
+  const back = close;
 
   return (
     <FullScreen onClose={close} label="בחירת סניפים">
@@ -271,8 +269,7 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
                             open({ kind: 'nearby', city: c.name });
                             return;
                           }
-                          setCity(c.name);
-                          setQuery('');
+                          open({ kind: 'stores', city: c.name });
                         }}
                       >
                         <span className="text-[1.05rem] font-medium">
@@ -327,8 +324,14 @@ export function StorePicker({ quick = false }: { quick?: boolean }) {
             disabled={chosen.length === 0}
             onClick={() => {
               // Opened from the suggestions screen: continue to the list, not back to it.
-              if (useNav.getState().stack.some((o) => o.kind === 'nearby')) useNav.getState().go('list');
-              else close();
+              const { stack, go, closeSome } = useNav.getState();
+              if (stack.some((o) => o.kind === 'nearby')) go('list');
+              else {
+                // Close the city's branches and the list of cities together.
+                let steps = 0;
+                while (steps < stack.length && stack[stack.length - 1 - steps].kind === 'stores') steps++;
+                closeSome(steps);
+              }
             }}
           >
             {chosen.length === 0 ? 'עוד לא נבחר סניף' : chosen.length === 1 ? 'המשך עם סניף אחד' : `המשך עם ${chosen.length} סניפים`}

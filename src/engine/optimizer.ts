@@ -1,9 +1,9 @@
 // Basket comparison: what the list costs in each store, and whether splitting it between two
 // stores is worth the extra stop.
 
-import type { Catalog } from '../data/catalog';
+import { sameProductElsewhere, type Catalog } from '../data/catalog';
 import { costFor, round2, type PricingOptions } from '../lib/pricing';
-import type { ListItem, Promo } from '../types';
+import type { ListItem, Product, Promo } from '../types';
 
 export interface Line {
   itemId: string;
@@ -53,12 +53,17 @@ export interface Comparison {
 /** The cheapest acceptable product for one list line in one store, or null if none is sold. */
 export function quoteLine(item: ListItem, storeId: string, catalog: Catalog, opts: PricingOptions): Line | null {
   let best: Line | null = null;
-  for (const pid of item.pids) {
-    const product = catalog.products.get(pid);
+  const consider = (pid: string, product: Product | undefined) => {
     const offer = product?.offers.get(storeId);
-    if (!product || !offer) continue;
+    if (!product || !offer) return;
     const cost = costFor(offer, item.qty, product.weighted, opts);
     if (!best || cost.total < best.total) best = { itemId: item.id, pid, ...cost };
+  };
+  for (const pid of item.pids) consider(pid, catalog.products.get(pid));
+  // Produce and deli items have a different code in every chain: a tomato chosen in one chain is
+  // still a tomato in the next, so look for the same thing by name before calling it missing.
+  if (!best) {
+    for (const pid of item.pids) for (const p of sameProductElsewhere(catalog, pid)) consider(p.pid, p);
   }
   return best;
 }
@@ -162,6 +167,9 @@ function bestSplit(
       }
       // If everything lands in one store this is not a split at all.
       if (!linesA.length || !linesB.length) continue;
+      // Two stops must cover whatever one stop would: a pair that lacks something the best
+      // single store sells would need a third stop, so it is not a fair comparison.
+      if (missing.some((id) => !bestSingle.missing.includes(id))) continue;
       const totalA = round2(linesA.reduce((n, l) => n + l.total, 0));
       const totalB = round2(linesB.reduce((n, l) => n + l.total, 0));
       const total = round2(totalA + totalB);

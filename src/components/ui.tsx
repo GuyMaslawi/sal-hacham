@@ -141,6 +141,7 @@ export function Stepper({
   unit,
   onChange,
   size = 'md',
+  min,
 }: {
   value: number;
   step?: number;
@@ -148,17 +149,29 @@ export function Stepper({
   unit?: string;
   onChange: (next: number) => void;
   size?: 'md' | 'lg';
+  /** For a setting rather than a list line: never go below this, and never offer to remove. */
+  min?: number;
 }) {
   const btn = size === 'lg' ? 'size-12' : 'size-11';
   const next = (delta: number) => Math.round((value + delta) * 100) / 100;
-  const removes = value - step <= 0;
+  const removes = min === undefined && value - step <= 0;
+  const atMin = min !== undefined && value - step < min;
+  // A stepper often appears where an "add" button was just tapped; its minus sits under the same
+  // finger, so a quick second tap would remove what was just added. Ignore taps for a moment.
+  const shownAt = useRef(performance.now());
+  const settled = () => performance.now() - shownAt.current > 450;
   return (
     <div className="inline-flex shrink-0 items-center rounded-full border-[1.5px] border-line bg-surface" dir="ltr">
       <button
         type="button"
         aria-label={removes ? 'הסר מהרשימה' : 'פחות'}
-        className={cx(btn, 'inline-flex items-center justify-center rounded-full active:bg-sunken', removes && 'text-alert')}
-        onClick={() => onChange(next(-step))}
+        disabled={atMin}
+        className={cx(
+          btn,
+          'inline-flex items-center justify-center rounded-full active:bg-sunken disabled:opacity-30',
+          removes && 'text-alert',
+        )}
+        onClick={() => settled() && onChange(next(-step))}
       >
         {/* At one unit, "minus" removes the line; say so with the icon. */}
         {removes ? <Trash2 className="size-[1.1rem]" strokeWidth={2.25} /> : <Minus className="size-5" strokeWidth={2.5} />}
@@ -171,7 +184,7 @@ export function Stepper({
         type="button"
         aria-label="עוד"
         className={cx(btn, 'inline-flex items-center justify-center rounded-full active:bg-sunken')}
-        onClick={() => onChange(next(step))}
+        onClick={() => settled() && onChange(next(step))}
       >
         <Plus className="size-5" strokeWidth={2.5} />
       </button>

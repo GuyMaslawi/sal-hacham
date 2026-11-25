@@ -3,6 +3,7 @@ import { buildCatalog, findByBarcode, searchProducts, suggestSubstitutes } from 
 import { costFor, nextDeal, unitPrice } from '../lib/pricing';
 import { parseShoppingList } from '../lib/text';
 import type { ListItem, StoreData, StoreInfo, StoreRow } from '../types';
+import { fitQty } from '../state/app';
 import { compareBasket } from './optimizer';
 
 const OPTS = { includeClub: false, today: '2026-11-20' };
@@ -151,6 +152,43 @@ describe('catalog', () => {
     const cucumber = catalog.products.get('a:1502~kg')!;
     expect(suggestSubstitutes(catalog, cucumber, 'b-1').map((p) => p.pid)).toEqual(['b:88~kg']);
   });
+
+  describe('produce and stand-ins', () => {
+    const shop = [store('a-1', 'a'), store('b-1', 'b'), store('c-1', 'c')];
+    const produce = buildCatalog(
+      [
+        data('a-1', [
+          ['7290000333333', 'עגבניות קצוצות יכין 240', 'יכין', 6.9, 240, 'g', 0],
+          ['7290000444444', 'מלפפונים בחומץ 560 גרם', 'בית השיטה', 12.5, 560, 'g', 0],
+          ['11', 'עגבניה', '', 8.9, 1000, 'g', 1],
+          ['12', 'מלפפון', '', 6.9, 1000, 'g', 1],
+          ['13', 'חזה עוף טרי ארוז', '', 44.9, 1000, 'g', 1],
+        ]),
+        data('b-1', [
+          ['7290000333333', 'עגבניות קצוצות יכין 240', 'יכין', 7.6, 240, 'g', 0],
+          ['7290000444444', 'מלפפונים בחומץ 560 גרם', 'בית השיטה', 11.9, 560, 'g', 0],
+          ['21', 'עגבניה', '', 7.9, 1000, 'g', 1],
+          ['22', 'חזה עוף קפוא', '', 37.9, 1000, 'g', 1],
+          ['23', 'כנפיים עוף טרי ארוז', '', 24.9, 1000, 'g', 1],
+          ['24', 'חזה עוף טרי שלם', '', 49.9, 1000, 'g', 1],
+        ]),
+        data('c-1', [['7290000333333', 'עגבניות קצוצות יכין 240', 'יכין', 7.2, 240, 'g', 0]]),
+      ],
+      shop,
+    );
+
+    it('finds fresh produce sold under the singular when the shopper writes the plural', () => {
+      expect(searchProducts(produce, 'עגבניות')[0].name).toBe('עגבניה');
+      expect(searchProducts(produce, 'מלפפונים')[0].name).toBe('מלפפון');
+      // Asking for the canned product still finds it first.
+      expect(searchProducts(produce, 'עגבניות קצוצות')[0].pid).toBe('7290000333333');
+    });
+
+    it('does not offer frozen for fresh, or another cut of the same animal', () => {
+      const breast = produce.products.get('a:13~kg')!;
+      expect(suggestSubstitutes(produce, breast, 'b-1').map((p) => p.name)).toEqual(['חזה עוף טרי שלם']);
+    });
+  });
 });
 
 describe('compareBasket', () => {
@@ -223,8 +261,47 @@ describe('parseShoppingList', () => {
     expect(parseShoppingList('ביצים 12\n30 ביצים\n2 ק"ג עגבניות\nתפוחים חצי קילו')).toEqual([
       { label: 'ביצים 12', qty: 1 },
       { label: '30 ביצים', qty: 1 },
-      { label: 'עגבניות', qty: 2 },
-      { label: 'תפוחים', qty: 0.5 },
+      { label: 'עגבניות', qty: 2, kg: true },
+      { label: 'תפוחים', qty: 0.5, kg: true },
+    ]);
+  });
+
+  it('reads decimal commas, curly quotes, a bare trailing kilo and counts of cucumbers', () => {
+    expect(parseShoppingList('1,5 ק"ג עגבניות\nחצי ק”ג גבינה\nעגבניות קילו\n3 מלפפונים\n½ קילו בשר\nחלב, לחם')).toEqual([
+      { label: 'עגבניות', qty: 1.5, kg: true },
+      { label: 'גבינה', qty: 0.5, kg: true },
+      { label: 'עגבניות', qty: 1, kg: true },
+      { label: 'מלפפונים', qty: 3 },
+      { label: 'בשר', qty: 0.5, kg: true },
+      { label: 'חלב', qty: 1 },
+      { label: 'לחם', qty: 1 },
+    ]);
+  });
+
+  it('turns a quantity into kilos or whole packages once the product is known', () => {
+    const pack500 = { weighted: false, qty: 500, unit: 'g' as const };
+    const pack400 = { weighted: false, qty: 400, unit: 'g' as const };
+    const byKilo = { weighted: true, qty: 1000, unit: 'g' as const };
+    expect(fitQty(0.5, true, pack500)).toBe(1);
+    expect(fitQty(0.5, true, pack400)).toBe(1);
+    expect(fitQty(2, true, pack500)).toBe(4);
+    expect(fitQty(1.5, false, pack500)).toBe(2);
+    expect(fitQty(6, false, byKilo)).toBe(1);
+    expect(fitQty(2, false, byKilo)).toBe(0.5);
+    expect(fitQty(1.5, true, byKilo)).toBe(1.5);
+    expect(fitQty(1, false, byKilo)).toBe(1);
+  });
+
+  it('prices produce chosen in one chain at the same produce in another', () => {
+    const shop = [store('a-1', 'a'), store('b-1', 'b')];
+    const c = buildCatalog(
+      [data('a-1', [['11', 'עגבניה', '', 8.9, 1000, 'g', 1]]), data('b-1', [['21', 'עגבניה במשקל', '', 7.9, 1000, 'g', 1]])],
+      shop,
+    );
+    const q = compareBasket([item('t', ['a:11~kg'])], c, ['a-1', 'b-1'], OPTS);
+    expect(q.quotes.map((x) => [x.storeId, x.total, x.missing.length])).toEqual([
+      ['b-1', 7.9, 0],
+      ['a-1', 8.9, 0],
     ]);
   });
 

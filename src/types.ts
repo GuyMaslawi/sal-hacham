@@ -63,6 +63,8 @@ export interface StoreData {
   id: string;
   /** Publication time of the price list this was built from. */
   u: string;
+  /** Size of the published file this copy came from, to notice a rebuilt file with the same date. */
+  z?: number;
   items: StoreRow[];
 }
 
@@ -87,6 +89,8 @@ export interface ListItem {
   label: string;
   /** Units, or kilograms for weighted products. */
   qty: number;
+  /** The quantity is in kilos ("חצי קילו גבינה"), not a count; set until a product fixes the meaning. */
+  kg?: boolean;
   /** Products that satisfy this line, in order of preference. Empty = not matched yet. */
   pids: string[];
   checked: boolean;

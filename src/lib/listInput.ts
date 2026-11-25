@@ -4,6 +4,10 @@
 import { useNav, type ListStart } from '../state/nav';
 
 let picker: HTMLInputElement | null = null;
+let picking = false;
+
+/** The phone's photo picker or camera is open on top of the app. */
+export const isPickingPhoto = () => picking;
 
 /**
  * Open the phone's picker for a photo or a screenshot of a list. No `capture` attribute, so the
@@ -21,9 +25,14 @@ export function pickPhoto(onPicked: (photo: Blob) => void) {
   const input = picker;
   input.value = '';
   input.onchange = () => {
+    picking = false;
     const file = input.files?.[0];
     if (file) onPicked(file);
   };
+  input.oncancel = () => {
+    picking = false;
+  };
+  picking = true;
   input.click();
 }
 

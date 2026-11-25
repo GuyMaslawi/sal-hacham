@@ -1,5 +1,5 @@
 import { ListChecks, LoaderCircle, MapPin, Scale, ShoppingCart, Store } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Button, cx, Toaster } from './components/ui';
 import type { TextSize } from './types';
 import { CompareScreen } from './screens/CompareScreen';
@@ -69,7 +69,9 @@ export default function App() {
     <>
       {hasStores ? (
         <div className="frame min-h-dvh pb-[calc(4.75rem+env(safe-area-inset-bottom))]">
-          <DownloadStatus />
+          <StatusSlot>
+            <DownloadStatus />
+          </StatusSlot>
           {/* A short fade marks that the screen changed, without moving anything around. */}
           <main key={tab} className="animate-fade">
             {tab === 'list' ? <ListScreen /> : null}
@@ -100,7 +102,7 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
     case 'item':
       return <ItemSheet itemId={overlay.itemId} />;
     case 'stores':
-      return <StorePicker quick={overlay.quick} />;
+      return <StorePicker key={overlay.city ?? ''} quick={overlay.quick} city={overlay.city} />;
     case 'nearby':
       return <NearbyScreen key={overlay.city ?? 'here'} city={overlay.city} />;
     case 'help':
@@ -108,6 +110,29 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
     case 'finish':
       return <FinishSheet />;
   }
+}
+
+/**
+ * Holds the download banner and publishes its height as `--status-h`, so the list screen, which
+ * fills exactly one screen, can leave room for it instead of pushing its last button under the
+ * tab bar.
+ */
+function StatusSlot({ children }: { children: ReactNode }) {
+  const slot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = slot.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const publish = () => root.style.setProperty('--status-h', `${el.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.setProperty('--status-h', '0px');
+    };
+  }, []);
+  return <div ref={slot}>{children}</div>;
 }
 
 function DownloadStatus() {

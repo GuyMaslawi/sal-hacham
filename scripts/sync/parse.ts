@@ -5,6 +5,7 @@ import {
   cleanManufacturer,
   cleanAddress,
   cleanText,
+  isPseudoItem,
   normalizeCode,
   normalizeQuantity,
   parseNumber,
@@ -67,6 +68,9 @@ export interface PriceItem {
   weighted: boolean;
 }
 
+/** Shelf prices under this are placeholders (coupons, deposits, "0.01" rows), not what an item costs. */
+export const MIN_PRICE = 0.2;
+
 export function parsePriceFull(xml: string): { storeId: string; items: Map<string, PriceItem> } {
   const storeId = storeIdKey(tagAny(xml.slice(0, 2000), 'StoreID', 'StoreId'));
   const items = new Map<string, PriceItem>();
@@ -77,7 +81,7 @@ export function parsePriceFull(xml: string): { storeId: string; items: Map<strin
     const code = normalizeCode(tag(b, 'ItemCode'));
     const price = parseNumber(tag(b, 'ItemPrice'));
     const name = cleanText(tagAny(b, 'ItemName', 'ItemNm', 'ManufactureItemDescription', 'ManufacturerItemDescription'));
-    if (!code || !name || !(price > 0) || price > 100_000) continue;
+    if (!code || !name || !(price >= MIN_PRICE) || price > 100_000 || isPseudoItem(name, price)) continue;
     const weighted = /^(1|true|yes)$/i.test(tag(b, 'bIsWeighted'));
     const { qty, unit } = normalizeQuantity(
       tag(b, 'Quantity'),
@@ -155,11 +159,50 @@ const CONDITIONAL = /השני|שני ב|\d\s*\+\s*\d|מתנה|חינם|קנה |�
 // Membership or a specific payment card, even when the file marks the deal as for everyone.
 const MEMBERS_ONLY = /מועדון|חברי|w\s*card|כרטיס|אשראי|לחברים/i;
 
-/** "עד 6 יח'", "מוגבל ל-2", "מקסימום 4" -> 6 */
-const LIMIT = /(?:עד|מוגבל(?:ת)?(?:\s*ל)?-?|מקסימום|מקס'?)\s*(\d{1,2})\s*(?:יח|יחידות|מוצרים|מנות|פריטים|ק"ג)?/;
+// A cap on how much can be bought at the deal price. "מוגבל ל-2", "מקסימום 4" and "מוגבל 3 ק"ג" may
+// stand alone, even glued to the word before ("שקיקיםמוגבל 3"); "עד" and "מקס" also start sizes and
+// brand names ("עד 500 גרם", "פפסי מקס 1.5 ל", "אלמקס"), so after those only a count or kilos will
+// do: "עד 6 יח'", "מקס' 2 יח'", "עד3ק". A number running into a size ("מוגבל 500 גרם") is no cap.
+const COUNT_UNIT = `(?:יח(?:ידות|ידה)?['׳]?|מנות|מוצרים|פריטים|מימושים|ק"ג|ק״ג|קג['׳]?|קילו|ק['׳]?)(?![א-ת])`;
+const SIZE_UNIT = `(?:גרם|גר['׳]?|ג['׳]?|מ"ל|מ״ל|מל|מ['׳]?|ליטר|ל['׳]?|ס"מ|שעות|שעה)(?![א-ת])|%`;
+const LIMIT_WORD = new RegExp(
+  `(?:מוגבלת?|מקסימום|הגבלה)\\s*(?:ל|עד)?\\s*-?\\s*(\\d{1,3})(?![\\d.,])(?!\\s*(?:${SIZE_UNIT}))(?!\\s*-?\\s*ב\\s*-?\\s*\\d)`,
+);
+const LIMIT_UP_TO = new RegExp(`(?<![א-ת])(?:עד|מקס['׳]?)\\s*(?:ל)?\\s*-?\\s*(\\d{1,3})(?![\\d.,])\\s*${COUNT_UNIT}`);
+
+/** "מוגבל ל-2", "עד 6 יח'", "מקסימום 4" -> 2, 6, 4; "עד 500 גרם", "פפסי מקס 1.5 ל" -> 0 */
+export function limitFromText(desc: string): number {
+  const m = LIMIT_WORD.exec(desc) ?? LIMIT_UP_TO.exec(desc);
+  return m ? Number(m[1]) : 0;
+}
 
 /** "2 ב-12", "3ב25", "2 יח' ב 10", "2 ק"ג ב 59.90" -> [2, 12] */
 const N_FOR_X = /(?<![\d.])(\d{1,2})\s*(?:יח'?|יחידות|ק"ג|קג|קילו)?\s*ב\s*-?\s*(\d+(?:\.\d+)?)/;
+
+const GRAMS = `(?:גרם|גר['׳\`]?|ג['׳]?)(?![א-ת])`;
+/** "250 גרם ב-19.90", "200ג ב15ש", "300 גר ב" (cut short) -> 250 g for 19.90 */
+const GRAMS_FOR_X = new RegExp(`(?<![\\d.,])(\\d{2,4})\\s*${GRAMS}\\s*ב\\s*-?\\s*(?:(\\d+(?:\\.\\d+)?)|$)`);
+/** "ב7.90ש ל100ג", "ב 8.50 ל 100 גר" -> 100 g for 7.90 */
+const X_PER_GRAMS = new RegExp(
+  `(?<![א-ת])ב\\s*-?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:ש"ח|ש״ח|שח|ש['׳]?|₪)?\\s*ל(?:כל)?\\s*-?\\s*(\\d{2,4})\\s*${GRAMS}`,
+);
+
+/**
+ * A deli or cheese-counter deal on a weighed item, worded as a price for a number of grams
+ * ("פסטרמה 250 גרם ב-19.90"), as a price per kilo. `fallbackPrice` stands in for a price the
+ * wording lost to truncation.
+ */
+export function perKiloFromGrams(desc: string, fallbackPrice: number): number | null {
+  const per = X_PER_GRAMS.exec(desc);
+  const pack = per ? null : GRAMS_FOR_X.exec(desc);
+  const grams = per ? Number(per[2]) : pack ? Number(pack[1]) : 0;
+  const price = per ? Number(per[1]) : pack ? (pack[2] ? Number(pack[2]) : fallbackPrice) : 0;
+  if (!(grams >= 50 && grams <= 5000) || !(price > 0)) return null;
+  return price / (grams / 1000);
+}
+
+/** A weighed item's minimum under this many kilos is a token ("0.01"), not a package size. */
+const TOKEN_MIN_KG = 0.05;
 
 const close = (a: number, b: number, tolerance = 0.06) => Math.abs(a - b) <= tolerance * b;
 
@@ -219,8 +262,16 @@ export function parsePromoFull(xml: string, today: string): Map<string, RawPromo
         let evidence: 'total' | 'unit' | null = null;
         let price = rawPrice;
         if (weighted) {
-          // A minimum under one kilo only makes sense as a price per kilo.
-          if (minQty < 1) {
+          // Prices of weighed items are kept per kilo. A deal for "250 גרם ב-19.90", or a minimum
+          // under a kilo, is the price of that package: 250 g for 19.90 is 79.60 a kilo, not 19.90.
+          // pickPromos then drops it unless it beats the shelf price per kilo.
+          const perKilo = perKiloFromGrams(desc, rawPrice);
+          if (perKilo !== null) {
+            minQty = 1;
+            price = perKilo;
+            evidence = 'total';
+          } else if (minQty < 1) {
+            if (minQty >= TOKEN_MIN_KG) price = rawPrice / minQty;
             minQty = 1;
             evidence = 'unit';
           } else if (said && saidN === Math.round(minQty)) {
@@ -245,8 +296,7 @@ export function parsePromoFull(xml: string, today: string): Map<string, RawPromo
 
         // A cap on how much can be bought at the deal price, from the field or the wording.
         const capField = parseNumber(tag(it, 'MaxQty') || tag(p, 'MaxQty'));
-        const capText = LIMIT.exec(desc);
-        const cap = capField > 0 ? capField : capText ? Number(capText[1]) : 0;
+        const cap = capField > 0 ? capField : limitFromText(desc);
         const promo: RawPromo = {
           minQty: Math.round(minQty * 1000) / 1000,
           price: Math.round(price * 100) / 100,
