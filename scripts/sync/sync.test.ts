@@ -707,3 +707,28 @@ describe('deploy guard and unplaced stores', () => {
     expect(shrinkProblems([...named, ...nameless], named.slice(0, 10), '2026-11-25')).toContain('kingstore: 29 → 10 stores');
   });
 });
+
+describe('club field', () => {
+  it('reads "everyone" the way each chain writes it', async () => {
+    const { isEveryoneClub } = await import('./parse.ts');
+    for (const t of ['', '0', '0 - כלל הלקוחות', '0=אין', ' 0=אין ', 'אין']) expect(isEveryoneClub(t)).toBe(true);
+    for (const t of ['2=לייף סטייל', '1', '10 - חברי מועדון', '01']) expect(isEveryoneClub(t)).toBe(false);
+  });
+});
+
+describe('hand-checked store cities', () => {
+  it('puts the checked city on the store, and every such city has coordinates', async () => {
+    const { applyStoreCities, loadStoreCities } = await import('./normalize.ts');
+    const { readFileSync } = await import('node:fs');
+    const cities = loadStoreCities();
+    const stores = [
+      { id: 'keshet-16', city: 'אחר' },
+      { id: 'shufersal-1', city: 'תל אביב - יפו' },
+    ];
+    expect(applyStoreCities(stores, cities)).toBe(1);
+    expect(stores[0].city).toBe('חיפה');
+    expect(stores[1].city).toBe('תל אביב - יפו');
+    const coords = JSON.parse(readFileSync(new URL('../data/city-coords.json', import.meta.url), 'utf8'));
+    expect(Object.values(cities).filter((c) => !coords[c])).toEqual([]);
+  });
+});

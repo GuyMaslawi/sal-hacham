@@ -286,6 +286,26 @@ const NOT_A_CITY =
 
 export const UNKNOWN_CITY = 'אחר';
 
+/** Store id → city, checked by hand (scripts/data/store-cities.json). Keys starting with "_" are notes. */
+export function loadStoreCities(): Record<string, string> {
+  const path = fileURLToPath(new URL('../data/store-cities.json', import.meta.url));
+  const all = JSON.parse(readFileSync(path, 'utf8')) as Record<string, string>;
+  return Object.fromEntries(Object.entries(all).filter(([id]) => !id.startsWith('_')));
+}
+
+/** Put the hand-checked cities on the stores they name; returns how many changed. */
+export function applyStoreCities(stores: Array<{ id: string; city: string }>, cities: Record<string, string>): number {
+  let changed = 0;
+  for (const s of stores) {
+    const city = cities[s.id];
+    if (city && s.city !== city) {
+      s.city = city;
+      changed++;
+    }
+  }
+  return changed;
+}
+
 /** Resolve a store's city from the CBS code or free text, falling back to the store name/address. */
 export function resolveCity(rawCity: string, storeName: string, address: string): string {
   const raw = rawCity.trim();

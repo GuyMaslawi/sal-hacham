@@ -38,6 +38,8 @@
 	<string>זיהוי הדיבור של Apple הופך את מה שאמרת לשורות ברשימת הקניות.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>המיקום משמש רק בטלפון, כדי למצוא את הסניפים הקרובים אליך. הוא לא נשמר ולא נשלח לשום מקום.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>סל חכם משתמש במיקום רק בזמן שהאפליקציה פתוחה, כדי למצוא את הסניפים הקרובים אליך. הוא לא נשמר ולא נשלח לשום מקום.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

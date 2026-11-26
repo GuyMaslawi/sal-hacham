@@ -17,6 +17,26 @@ interface Note {
   alert?: boolean;
 }
 
+// What was typed, said or read into the box survives the sheet closing, however it closes: a tap
+// beside it, "סגור" or the phone's back button. It comes back the next time the sheet opens, and
+// goes once the products are added. Kept on the phone only.
+const DRAFT_KEY = 'sal-hacham-list-draft';
+const loadDraft = () => {
+  try {
+    return localStorage.getItem(DRAFT_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+const saveDraft = (text: string) => {
+  try {
+    if (text.trim()) localStorage.setItem(DRAFT_KEY, text);
+    else localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* storage unavailable: the draft is simply not kept */
+  }
+};
+
 /** `base` followed by `lines`, one per line. */
 const appendLines = (base: string, lines: string[]) => {
   const head = base.replace(/\s+$/, '');
@@ -31,14 +51,19 @@ const appendLines = (base: string, lines: string[]) => {
  */
 export function AddListSheet({ start, photo, clipboard }: { start: ListStart; photo?: Blob; clipboard?: Promise<string> }) {
   const close = useNav((s) => s.close);
-  const [text, setText] = useState('');
+  const [draft] = useState(loadDraft);
+  const [text, setText] = useState(draft);
   const [activity, setActivity] = useState<Activity>({ kind: 'idle' });
-  const [note, setNote] = useState<Note | null>(null);
+  const [note, setNote] = useState<Note | null>(draft ? { text: 'המשכנו מהרשימה שהתחלת קודם.' } : null);
   const [picture, setPicture] = useState<string | null>(null);
   const dictation = useRef<Dictation | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const textRef = useRef(text);
   textRef.current = text;
+  const added = useRef(false);
+  useEffect(() => {
+    if (!added.current) saveDraft(text);
+  }, [text]);
   const lines = useMemo(() => parseShoppingList(text), [text]);
   const voice = canDictate();
   // The product names of the chosen stores, to tell where one spoken item ends and the next
@@ -171,7 +196,10 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
     return () => {
       mounted.current = false;
       window.setTimeout(() => {
-        if (!mounted.current) dictation.current?.stop();
+        if (mounted.current) return;
+        dictation.current?.stop();
+        // Closed without adding: say where the text went.
+        if (!added.current && textRef.current.trim()) toast('הרשימה נשמרה. היא תחכה לך בפעם הבאה שתוסיף רשימה');
       });
     };
   }, []);
@@ -180,10 +208,10 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
 
   // The sheet stays on screen until the browser confirms the step back; a second tap meanwhile
   // must not add the whole list again.
-  const added = useRef(false);
   const add = () => {
     if (added.current) return;
     added.current = true;
+    saveDraft('');
     stopVoice();
     useApp.getState().addFreeText(lines);
     toast(lines.length === 1 ? 'מוצר אחד נוסף לרשימה' : `${lines.length} מוצרים נוספו לרשימה`);
@@ -271,6 +299,19 @@ export function AddListSheet({ start, photo, clipboard }: { start: ListStart; ph
       <p className="mt-1 text-sm text-muted">
         כמות כותבים או אומרים לפני המוצר, למשל "2 חלב" או "שתי עגבניות". אחרי ההוספה תאשר לכל שורה את המוצר המדויק.
       </p>
+      {text.trim() && !listening && !reading ? (
+        <button
+          type="button"
+          className="mt-1 min-h-10 text-sm font-semibold text-muted underline underline-offset-4"
+          onClick={() => {
+            setText('');
+            setNote(null);
+            box.current?.focus();
+          }}
+        >
+          לנקות ולהתחיל מחדש
+        </button>
+      ) : null}
     </Sheet>
   );
 }

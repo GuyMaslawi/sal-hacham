@@ -30,7 +30,7 @@ import { gzipSync } from 'node:zlib';
 import { CHAINS, israelDate, type ChainAdapter, type RemoteFile } from './chains.ts';
 import { chooseBaseline, isStale, reuseRecord, selectCarryOver, shrinkProblems } from './carry.ts';
 import { mapPool, request } from './http.ts';
-import { isOnlineStorefront, resolveCity, UNKNOWN_CITY } from './normalize.ts';
+import { applyStoreCities, isOnlineStorefront, loadStoreCities, resolveCity, UNKNOWN_CITY } from './normalize.ts';
 import { parsePriceFull, parsePromoFull, parseStores, pickPromos, type PriceItem, type RawStore } from './parse.ts';
 import { decodeFile } from './xml.ts';
 
@@ -436,6 +436,8 @@ async function main() {
     }
   }
 
+  // Cities checked by hand for stores whose chain gives none we can use (scripts/data/store-cities.json).
+  applyStoreCities(stores, loadStoreCities());
   stores.sort((a, b) => a.city.localeCompare(b.city, 'he') || a.c.localeCompare(b.c) || a.n.localeCompare(b.n, 'he'));
   const present = new Set(stores.map((s) => s.c));
   // City coordinates let the app suggest stores near the shopper without any server.

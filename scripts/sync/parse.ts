@@ -135,9 +135,13 @@ export interface RawPromo extends Promo {
 // for a fixed price, 2 = percentage discount (only unambiguous for a single unit).
 const FIXED_PRICE_REWARDS = new Set(['1', '3', '10']);
 
-const isEveryoneClub = (clubText: string) => {
+/**
+ * Whether a deal's club field means "every customer". Chains write it as "0", "0 - כלל הלקוחות",
+ * "0=אין" (Super-Pharm) or leave it empty; any other number is a club.
+ */
+export const isEveryoneClub = (clubText: string) => {
   const t = clubText.trim();
-  return t === '' || t === '0' || /^0\s*[-–]/.test(t);
+  return t === '' || /^0(?!\d)/.test(t) || /^(?:אין|ללא|כלל הלקוחות|כל הלקוחות)$/.test(t);
 };
 
 const day = (s: string) => {
