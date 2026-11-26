@@ -151,7 +151,18 @@ const EGG_NOT = /חופש|אורגני|אומגה|שליו|מבושל|קשות|�
 
 function eggKind(p: Product): Kind | null {
   if (p.weighted || !/ביצ/.test(p.name) || EGG_NOT.test(p.name)) return null;
-  const size = /(?:^|[^a-z])(xl|l|m|s)(?![a-z])/i.exec(p.name)?.[1]?.toLowerCase();
+  // The size in letters (L, XL) or in Hebrew words ("ביצים 18 יח גדול").
+  const size =
+    /(?:^|[^a-z])(xl|l|m|s)(?![a-z])/i.exec(p.name)?.[1]?.toLowerCase() ??
+    (/ענק|גדול מאוד|גדולות מאוד/.test(p.name)
+      ? 'xl'
+      : /גדול/.test(p.name)
+        ? 'l'
+        : /בינוני/.test(p.name)
+          ? 'm'
+          : /קטנ/.test(p.name)
+            ? 's'
+            : undefined);
   const count = Number(/(\d{1,2})\s*(?:יח|ביצים|יחידות|\b)/.exec(p.name)?.[1] ?? (p.unit === 'u' && p.qty > 1 ? p.qty : 0));
   if (!size || ![6, 10, 12, 18, 20, 24, 30].includes(count)) return null;
   const id = `eggs-${EGG_SIZES[size]}-${count}`;

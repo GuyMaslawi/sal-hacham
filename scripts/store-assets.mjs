@@ -1,9 +1,11 @@
 // Renders the Google Play listing pictures: phone screenshots of the live site (taken by walking
 // through it the way a shopper would) and the feature graphic. Needs Google Chrome installed.
 //
-//   node scripts/store-assets.mjs            → store/screenshots/*.png, store/feature-graphic.png
+//   node scripts/store-assets.mjs              → store/screenshots/*.png, store/feature-graphic.png
+//   node scripts/store-assets.mjs --app-store  → store/app-store/*.png (App Store, iPhone 6.3")
 //
 // Play wants phone screenshots no longer than twice their width; 1242×2208 (9:16) is safe.
+// The App Store takes the 6.3" iPhone size, 1206×2622, as its base and scales it for other phones.
 
 import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +19,7 @@ const PORT = 9333;
 const CITY = 'חיפה';
 const LIST = ['חלב 3% 2', "קוטג'", 'לחם אחיד', 'ביצים', 'אורז', 'פסטה', 'שמן קנולה', 'קפה נמס', 'נייר טואלט', 'במבה', 'שוקולד פרה', 'טחינה'];
 
+const APP_STORE = process.argv.includes('--app-store');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profile = mkdtempSync(join(tmpdir(), 'sal-store-'));
 const chrome = spawn(
@@ -84,7 +87,7 @@ try {
   // Neither a passing notice nor the "downloading prices" bar.
   const settled = `![...document.querySelectorAll('[aria-live=polite].fixed, [role=status], [role=alert]')].some((e) => e.innerText.trim())`;
 
-  const shots = resolve('store/screenshots');
+  const shots = resolve(APP_STORE ? 'store/app-store' : 'store/screenshots');
   // Start clean, so a screenshot that is no longer taken does not linger in the listing folder.
   rmSync(shots, { recursive: true, force: true });
   mkdirSync(shots, { recursive: true });
@@ -96,7 +99,12 @@ try {
   };
 
   await send('Page.enable');
-  await send('Emulation.setDeviceMetricsOverride', { width: 414, height: 736, deviceScaleFactor: 3, mobile: true });
+  await send(
+    'Emulation.setDeviceMetricsOverride',
+    APP_STORE
+      ? { width: 402, height: 874, deviceScaleFactor: 3, mobile: true }
+      : { width: 414, height: 736, deviceScaleFactor: 3, mobile: true },
+  );
   await send('Emulation.setTouchEmulationEnabled', { enabled: true });
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
 
@@ -150,6 +158,7 @@ try {
   await sleep(700);
   await shoot('4-product');
 
+  if (APP_STORE) throw Object.assign(new Error('done'), { done: true });
   console.log('Feature graphic:');
   await send('Emulation.clearDeviceMetricsOverride');
   await send('Emulation.setDeviceMetricsOverride', { width: 1024, height: 500, deviceScaleFactor: 1, mobile: false });
@@ -159,6 +168,8 @@ try {
   const { data } = await send('Page.captureScreenshot', { format: 'png' });
   writeFileSync(resolve('store/feature-graphic.png'), Buffer.from(data, 'base64'));
   console.log('  feature-graphic.png');
+} catch (err) {
+  if (!err.done) throw err;
 } finally {
   ws?.close();
   chrome.kill();

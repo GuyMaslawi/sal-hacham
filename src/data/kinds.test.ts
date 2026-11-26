@@ -30,6 +30,8 @@ describe('staple kinds', () => {
     expect(kind('שום יבש תפזורת')).toBe('garlic');
     expect(kind('ביצים 18 יח L פיקוח מ.לסר', false)).toBe('eggs-L-18');
     expect(kind('ביצים 12 יחידות M פיקוח', false)).toBe('eggs-M-12');
+    expect(kind('ביצים 18 יח גדול לסר', false)).toBe('eggs-L-18');
+    expect(kind('ביצים בינוניות 12 יח', false)).toBe('eggs-M-12');
   });
 
   it('leaves out prepared, frozen, smoked, dried and look-alike products', () => {

@@ -1,6 +1,6 @@
 # העלאת סל חכם ל-App Store
 
-**אפשר להתחיל רק אחרי ש-Apple מאשרים את חשבון המפתח.** עד אז אין צורך לעשות כלום; האפליקציה כבר נבנית ורצה בסימולטור.
+**מצב (26.11.2026):** החשבון הארגוני (GM-BUSINESS, צוות `JA985W9FZ2`) אושר. נרשם מזהה `io.github.guymaslawi.salhacham`, נוצרה האפליקציה ב-App Store Connect (Apple ID `6839656921`, SKU `sal-hacham-ios`), כל הפרטים מולאו, וגרסה 1.0.0 (build 1) הועלתה וצורפה. זמינה בישראל בלבד, חינם, דירוג גיל 13+. נשאר רק **Add for Review → Submit**.
 
 ## איך האפליקציה בנויה
 
@@ -50,7 +50,7 @@ https://appstoreconnect.apple.com → **Apps** → **+** → **New App**:
 
 ### 6. דף האפליקציה
 
-ממלאים לפי הטקסטים שלמטה. צילומי המסך נמצאים ב-`store/app-store/` (1320×2868, מתאים ל-iPhone בגודל 6.9 אינץ', ו-Apple מקטינה אותם לשאר הגדלים).
+ממלאים לפי הטקסטים שלמטה. צילומי המסך נמצאים ב-`store/app-store/` (1206×2622, הגודל הבסיסי ש-Apple דורשת היום: iPhone 6.3 אינץ'; היא מתאימה אותם לשאר הגדלים). צילום מחדש מהאתר החי: `node scripts/store-assets.mjs --app-store`.
 
 ### 7. הגשה לבדיקה
 
@@ -75,14 +75,14 @@ https://appstoreconnect.apple.com → **Apps** → **+** → **New App**:
 **Promotional text** (119/170):
 
 ```
-משווים את רשימת הקניות בין 29 רשתות וכ-1,900 סניפים, לפי המחירים והמבצעים שהרשתות מפרסמות היום. בלי הרשמה ובלי פרסומות.
+משווים את רשימת הקניות בין 28 רשתות וכ-1,900 סניפים, לפי המחירים והמבצעים שהרשתות מפרסמות. בלי הרשמה ובלי פרסומות.
 ```
 
 **Description**: התיאור המלא מ-`store/listing.md`, אותו טקסט כמו ב-Google Play.
 
 **App Privacy**: **Data Not Collected**. האפליקציה לא אוספת שום מידע, וזה גם מה שכתוב בקובץ הפרטיות שבתוך האפליקציה (`PrivacyInfo.xcprivacy`).
 
-**Age Rating**: לכל השאלות **None** או **No**. התוצאה: 4+.
+**Age Rating**: לכל השאלות **None** או **No**, חוץ מ-Alcohol, Tobacco or Drug Use or References: **Infrequent** (בקטלוג יש בירה, יין וסיגריות כמוצרים). התוצאה: 13+.
 
 **App Review notes** (באנגלית, כי הבודקים קוראים אנגלית):
 
@@ -96,4 +96,4 @@ Native features: the system share sheet for sharing the list, location (used onl
 The app collects no data and has no ads, analytics or tracking.
 ```
 
-**Copyright**: `2026` ושמך, כפי שיופיע בחשבון המפתח.
+**Copyright**: `2026 GM-BUSINESS`. **Availability**: Israel בלבד. **Release**: אוטומטית אחרי האישור.
