@@ -58,11 +58,13 @@ async function chainsToFetch(): Promise<string[]> {
     const res = await fetch(`https://${owner.toLowerCase()}.github.io/${repoName}/data/index.json`, { cache: 'no-store' });
     const index = (await res.json()) as { stores: Array<{ c: string; u: string }> };
     const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(new Date());
-    // A chain needs fetching from here if the site has nothing recent for it.
+    // A chain the site lists but has nothing recent for is fetched from here too. A chain the
+    // site does not list at all was left out on purpose (an online-only shop), not lost.
     const fresh = new Set(
       index.stores.filter((s) => Date.parse(today) - Date.parse(s.u.slice(0, 10)) <= 86_400_000).map((s) => s.c),
     );
-    const stale = CHAINS.map((c) => c.id).filter((id) => !fresh.has(id));
+    const listed = new Set(index.stores.map((s) => s.c));
+    const stale = CHAINS.map((c) => c.id).filter((id) => listed.has(id) && !fresh.has(id));
     return [...new Set([...KNOWN_BLOCKED, ...stale])];
   } catch {
     return KNOWN_BLOCKED;
@@ -125,7 +127,13 @@ try {
     '--latest=false',
   ]);
 }
-run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber']);
+// An upload cut short (the Mac went to sleep, the connection dropped) is tried once more.
+try {
+  run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber']);
+} catch {
+  console.log('Upload failed; trying once more.');
+  run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber']);
+}
 writeFileSync(UPLOADED, print);
 
 if (flag('no-rebuild') || hourly) {
