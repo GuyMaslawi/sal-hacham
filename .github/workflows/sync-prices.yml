@@ -1,10 +1,14 @@
 # Every hour: download the chains' price files, rebuild the app with the fresh data and
 # publish it to GitHub Pages. Free on a public repository; a run takes about five minutes.
 #
-# Two clocks start it. GitHub's own schedule is unreliable (runs are delayed or dropped for
-# hours), so the hourly job on Guy's Mac (scripts/hourly-israel.sh) also starts it, right after
-# uploading the chains that only answer from Israel. When the Mac already started a run in the
-# last 45 minutes, the scheduled run steps aside; when the Mac is off, the schedule still runs.
+# Three clocks start it:
+# - The hourly job on Guy's Mac (scripts/hourly-israel.sh), right after it uploads the chains that
+#   only answer from Israel. Always runs: it brings new data.
+# - An outside timer (cron-job.org) at minute 47 of every hour, sending source=timer, for when
+#   the Mac is asleep or off.
+# - GitHub's own schedule, which is unreliable (runs are delayed or dropped for hours).
+# The timer's and the schedule's runs step aside when a run already rebuilt the site in the last
+# 45 minutes, so an awake Mac and the timer do not both rebuild every hour.
 name: Sync prices and deploy
 
 on:
@@ -18,6 +22,10 @@ on:
         description: Deploy even if a chain lost many stores (a first deploy, or a chain that really went away)
         type: boolean
         default: false
+      source:
+        description: Who asked for this run ("timer" for the outside hourly timer)
+        type: string
+        default: ''
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**.md', 'android/**', 'store/**', 'ios/**', 'capacitor.config.ts']
@@ -33,7 +41,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # A scheduled run is not needed when the Mac's hourly job has just started one.
+  # A timer or scheduled run is not needed when a run rebuilt the site in the last 45 minutes.
   check:
     runs-on: ubuntu-latest
     outputs:
@@ -44,11 +52,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           skip=false
-          if [ "${{ github.event_name }}" = "schedule" ]; then
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ inputs.source }}" = "timer" ]; then
             since=$(date -u -d '45 minutes ago' +%Y-%m-%dT%H:%M:%SZ)
-            recent=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow sync-prices.yml --event workflow_dispatch --limit 5 \
-              --json createdAt,conclusion --jq "[.[] | select(.createdAt >= \"$since\" and .conclusion == \"success\")] | length" || echo 0)
-            if [ "${recent:-0}" -gt 0 ]; then skip=true; echo "The Mac started a run in the last 45 minutes; skipping."; fi
+            # Recent successful runs; a run that itself stepped aside does not count, only one whose
+            # build job really ran.
+            for id in $(gh run list --repo "$GITHUB_REPOSITORY" --workflow sync-prices.yml --limit 8 \
+              --json databaseId,createdAt,conclusion --jq ".[] | select(.createdAt >= \"$since\" and .conclusion == \"success\") | .databaseId"); do
+              built=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs" --jq '[.jobs[] | select(.name == "build" and .conclusion == "success")] | length' || echo 0)
+              if [ "${built:-0}" -gt 0 ]; then skip=true; echo "Run $id rebuilt the site in the last 45 minutes; skipping."; break; fi
+            done
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
 
