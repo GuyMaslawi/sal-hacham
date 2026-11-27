@@ -26,7 +26,10 @@ const RELEASE = 'local-data';
 const ARCHIVE = '.local-data/local-data.tar';
 const UPLOADED = '.local-data/uploaded.sha256';
 
-const run = (cmd: string, args: string[]) => execFileSync(cmd, args, { stdio: 'inherit' });
+const run = (cmd: string, args: string[], timeoutMs?: number) =>
+  execFileSync(cmd, args, { stdio: 'inherit', ...(timeoutMs ? { timeout: timeoutMs, killSignal: 'SIGKILL' as const } : {}) });
+// An upload that the Mac's sleep froze half way must not hold up every later run.
+const UPLOAD_TIMEOUT_MS = 20 * 60 * 1000;
 const read = (cmd: string, args: string[]) => execFileSync(cmd, args, { encoding: 'utf8' }).trim();
 const flag = (name: string) => process.argv.includes(`--${name}`);
 const option = (name: string) => {
@@ -129,10 +132,10 @@ try {
 }
 // An upload cut short (the Mac went to sleep, the connection dropped) is tried once more.
 try {
-  run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber']);
+  run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber'], UPLOAD_TIMEOUT_MS);
 } catch {
-  console.log('Upload failed; trying once more.');
-  run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber']);
+  console.log('Upload failed or took too long; trying once more.');
+  run('gh', ['release', 'upload', RELEASE, ARCHIVE, '--repo', repo, '--clobber'], UPLOAD_TIMEOUT_MS);
 }
 writeFileSync(UPLOADED, print);
 
