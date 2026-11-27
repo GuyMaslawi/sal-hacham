@@ -33,8 +33,8 @@ export type Overlay =
    * branch list of one city, a step of its own so the phone's back button returns to the cities.
    */
   | { kind: 'stores'; quick?: boolean; city?: string }
-  /** Suggested stores near the shopper, or around a chosen city. */
-  | { kind: 'nearby'; city?: string }
+  /** Suggested stores near the shopper or a chosen city, or in a region (`byRegion`). */
+  | { kind: 'nearby'; city?: string; byRegion?: boolean }
   | { kind: 'help' }
   /** "Done shopping?" confirmation. */
   | { kind: 'finish' };

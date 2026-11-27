@@ -104,7 +104,13 @@ function OverlayView({ overlay }: { overlay: Overlay }) {
     case 'stores':
       return <StorePicker key={overlay.city ?? ''} quick={overlay.quick} city={overlay.city} />;
     case 'nearby':
-      return <NearbyScreen key={overlay.city ?? 'here'} city={overlay.city} />;
+      return (
+        <NearbyScreen
+          key={overlay.city ?? (overlay.byRegion ? 'region' : 'here')}
+          city={overlay.city}
+          byRegion={overlay.byRegion}
+        />
+      );
     case 'help':
       return <HelpSheet />;
     case 'finish':
@@ -314,10 +320,13 @@ function Welcome() {
             <Button variant="outline" className="flex-1" disabled={!index} onClick={() => open({ kind: 'stores', quick: true })}>
               בחר עיר
             </Button>
-            <Button variant="quiet" className="flex-1" onClick={() => open({ kind: 'help' })}>
-              איך זה עובד?
+            <Button variant="outline" className="flex-1" disabled={!index} onClick={() => open({ kind: 'nearby', byRegion: true })}>
+              בחר אזור
             </Button>
           </div>
+          <Button variant="quiet" className="mt-1 min-h-10 w-full" onClick={() => open({ kind: 'help' })}>
+            איך זה עובד?
+          </Button>
         </div>
       </div>
     </div>

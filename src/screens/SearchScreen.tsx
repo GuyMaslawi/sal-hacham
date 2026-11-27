@@ -1,7 +1,8 @@
-import { Check, ChevronDown, Plus, ScanBarcode, X } from 'lucide-react';
-import { useDeferredValue, useMemo, useState } from 'react';
+import { Check, ChevronDown, ChevronLeft, Plus, ScanBarcode, X } from 'lucide-react';
+import { useDeferredValue, useMemo, useRef, useState } from 'react';
 import { BackButton, Button, cx, DealChip, FullScreen, IconButton, LabeledIconButton, Price, Stepper, toast } from '../components/ui';
 import { searchProducts } from '../data/catalog';
+import { STAPLES } from '../data/staples';
 import { changeQty } from '../lib/actions';
 import { costFor, promoLabel, sizeLabel, unitPrice } from '../lib/pricing';
 import { qtyUnit, storeTitle, useChosenStores, usePricingOptions, useStoreLookup } from '../lib/view';
@@ -26,7 +27,18 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   // How many things were added since this screen opened, for the "done" button.
   const [added, setAdded] = useState(0);
+  const textSize = useApp((s) => s.settings.textSize);
   const deferred = useDeferredValue(query);
+  const input = useRef<HTMLInputElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  // Back to an empty search, ready for the next product, without leaving the screen.
+  const addMore = () => {
+    setQuery('');
+    setExpanded(null);
+    scroller.current?.scrollTo({ top: 0 });
+    input.current?.focus();
+  };
 
   const onlyStore = mode.kind === 'substitute' ? mode.storeId : undefined;
   const results = useMemo(
@@ -64,6 +76,7 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
         <div className="mt-2 flex items-center gap-1 ps-1">
           <div className="relative flex-1">
             <input
+              ref={input}
               type="search"
               inputMode="search"
               enterKeyHint="search"
@@ -95,11 +108,30 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
         ) : null}
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div ref={scroller} className="flex-1 overflow-y-auto overscroll-contain pb-[max(1rem,env(safe-area-inset-bottom))]">
         {!trimmed ? (
-          <p className="px-6 pt-10 text-center text-muted">
-            כתוב מה אתה מחפש, למשל "חלב" או "אורז". אפשר להוסיף מילים כדי לדייק, כמו "חלב 3% תנובה".
-          </p>
+          <>
+            <p className="px-6 pt-10 text-center text-muted">
+              כתוב מה אתה מחפש, למשל "חלב" או "אורז". אפשר להוסיף מילים כדי לדייק, כמו "חלב 3% תנובה".
+            </p>
+            {mode.kind === 'add' ? (
+              <div className="px-5 pt-6">
+                <h3 className="mb-2 text-sm font-semibold text-muted">התחלה מהירה</h3>
+                <div className="flex flex-wrap gap-2">
+                  {STAPLES.map((word) => (
+                    <button
+                      key={word}
+                      type="button"
+                      onClick={() => setQuery(word)}
+                      className="min-h-11 rounded-full border-[1.5px] border-line bg-surface px-4 font-medium active:bg-sunken"
+                    >
+                      {word}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : (
           <>
             {results.length > 0 ? (
@@ -150,10 +182,20 @@ export function SearchScreen({ mode }: { mode: SearchMode }) {
       </div>
       {mode.kind === 'add' && added > 0 ? (
         <div className="border-t-[1.5px] border-line bg-surface px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <Button variant="tag" className="w-full" onClick={close}>
-            <Check className="size-5" strokeWidth={2.75} />
-            סיימתי, חזרה לרשימה ({added === 1 ? 'נוסף מוצר אחד' : `נוספו ${added}`})
-          </Button>
+          <p className="pb-2 text-center text-sm text-muted" aria-live="polite">
+            {added === 1 ? 'נוסף מוצר אחד לרשימה' : `נוספו ${added} מוצרים לרשימה`}
+          </p>
+          {/* Side by side, or one above the other when larger text would break the labels. */}
+          <div className={cx('grid gap-2', textSize === 'normal' ? 'grid-cols-2' : 'grid-cols-1')}>
+            <Button variant="outline" className="px-3" onClick={addMore}>
+              <Plus className="size-5 shrink-0" strokeWidth={2.5} />
+              הוספת מוצרים
+            </Button>
+            <Button variant="tag" className="px-3" onClick={close}>
+              המשך
+              <ChevronLeft className="size-5 shrink-0" strokeWidth={2.5} />
+            </Button>
+          </div>
         </div>
       ) : null}
     </FullScreen>

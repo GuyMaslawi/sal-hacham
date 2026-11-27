@@ -1,4 +1,4 @@
-import { Check, CircleHelp, LoaderCircle, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
+import { Check, CircleHelp, LoaderCircle, Map as MapIcon, MapPin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { InstallHint } from '../components/InstallHint';
 import { TextSizeChoice } from '../components/TextSizeChoice';
@@ -91,10 +91,19 @@ export function StoresScreen() {
       {stores.length >= MAX_STORES ? (
         <p className="mx-6 mt-2 text-sm text-muted">אפשר להשוות עד {MAX_STORES} סניפים. הסר אחד כדי להוסיף אחר.</p>
       ) : (
-        <Button variant="quiet" className="mx-4 mt-1 w-[calc(100%-2rem)]" onClick={() => open({ kind: 'nearby' })}>
-          <MapPin className="size-5" />
-          הצע לי סופרים באזור שלי
-        </Button>
+        <>
+          <p className="mx-6 mt-4 text-sm font-semibold text-muted">או שנציע לך סופרים</p>
+          <div className="mx-4 mt-1.5 grid grid-cols-2 gap-2">
+            <Button variant="outline" className="px-2" onClick={() => open({ kind: 'nearby' })}>
+              <MapPin className="size-5 shrink-0" />
+              לפי מרחק
+            </Button>
+            <Button variant="outline" className="px-2" onClick={() => open({ kind: 'nearby', byRegion: true })}>
+              <MapIcon className="size-5 shrink-0" />
+              לפי אזור
+            </Button>
+          </div>
+        </>
       )}
 
       <section className="mx-4 mt-6 rounded-2xl bg-surface">

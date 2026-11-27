@@ -11,6 +11,7 @@ import { qtyUnit, storeTitle, useComparison, usePricingOptions, useStoreLookup }
 import { fitQty, stepFor, useApp } from '../state/app';
 import { useData } from '../state/data';
 import { useNav } from '../state/nav';
+import { STAPLES } from '../data/staples';
 import type { ListItem, Promo } from '../types';
 
 interface RowPrices {
@@ -20,9 +21,6 @@ interface RowPrices {
   missingIn: number;
   promo: Promo | null;
 }
-
-// Things nearly every household buys: one tap opens the search already filled in.
-const STAPLES = ['חלב', 'לחם', 'ביצים', "קוטג'", 'עגבניות', 'מלפפונים', 'אורז', 'פסטה', 'שמן', 'קפה', 'נייר טואלט', 'חיתולים'];
 
 export function ListScreen() {
   const items = useApp((s) => s.items);
