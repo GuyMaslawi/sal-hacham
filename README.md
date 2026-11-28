@@ -70,14 +70,14 @@ npm test
 ### טיימר חיצוני (cron-job.org, חינם)
 
 התזמון של GitHub לא אמין: לפעמים הוא מדלג על ריצות במשך שעות. לכן שירות חינמי בחוץ מפעיל את ה-workflow
-בדקה 47 של כל שעה, עם `source=timer`. אם האתר כבר נבנה ב-45 הדקות האחרונות, הריצה מוותרת בעצמה.
+פעם בשעה (כרגע בתחילת כל שעה), עם `source=timer`. אם האתר כבר נבנה ב-45 הדקות האחרונות, הריצה מוותרת בעצמה.
 
 1. טוקן ב-GitHub (בחשבון GuyMaslawi): Settings → Developer settings → Fine-grained tokens → Generate new token.
    Repository access: Only select repositories → `sal-hacham`. Permissions → Actions: **Read and write**.
    תוקף: שנה. GitHub שולח מייל לפני שהוא פג; אז יוצרים חדש ומחליפים אותו ב-cron-job.org.
 2. ב-[cron-job.org](https://cron-job.org) (הרשמה חינמית) → Create cronjob:
    - URL: `https://api.github.com/repos/GuyMaslawi/sal-hacham/actions/workflows/sync-prices.yml/dispatches`
-   - Execution schedule: Custom, כל שעה, דקה 47.
+   - Execution schedule: כל שעה (כל דקה בשעה מתאימה).
    - Advanced → Request method: `POST`. Headers:
      `Authorization: Bearer <הטוקן>`, `Accept: application/vnd.github+json`,
      `X-GitHub-Api-Version: 2022-11-28`, `Content-Type: application/json`.
